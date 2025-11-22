@@ -31,14 +31,6 @@ pub struct DirectoryInfo {
     pub children_names: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiskScanResult {
-    pub root: FileNode,
-    pub total_size: u64,
-    pub file_count: u64,
-    pub dir_count: u64,
-}
-
 // Global cache for directory information
 static DIRECTORY_CACHE: once_cell::sync::Lazy<RwLock<Option<HashMap<String, DirectoryInfo>>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
@@ -244,171 +236,6 @@ impl DiskScanner {
             .insert(path.to_string_lossy().to_string(), dir_info);
 
         Ok(())
-    }
-
-    // Get directory info from cache or calculate on demand
-    pub fn get_directory_info(&self, path: &str) -> Result<DirectoryInfo, String> {
-        // First try to get from cache
-        if let Some(info) = self.cache.get(path) {
-            return Ok(info.clone());
-        }
-
-        // If not in cache, calculate on demand
-        let path_obj = Path::new(path);
-        if !path_obj.exists() {
-            return Err("Path does not exist".to_string());
-        }
-
-        if !path_obj.is_dir() {
-            return Err("Path is not a directory".to_string());
-        }
-
-        let name = path_obj
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Read directory to get children count and names
-        let entries = match fs::read_dir(path_obj) {
-            Ok(entries) => entries,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let mut children_count = 0;
-        let mut children_names = Vec::new();
-
-        for entry in entries {
-            if let Ok(entry) = entry {
-                children_count += 1;
-                if let Some(name) = entry.file_name().to_str() {
-                    children_names.push(name.to_string());
-                }
-            }
-        }
-
-        // Calculate directory size
-        let size = self.calculate_directory_size(path_obj).unwrap_or(0);
-
-        Ok(DirectoryInfo {
-            name,
-            path: path.to_string(),
-            size,
-            is_directory: true,
-            children_count,
-            children_names,
-        })
-    }
-
-    // Get immediate children of a directory
-    pub fn get_directory_children(&self, path: &str) -> Result<Vec<FileNode>, String> {
-        println!(
-            "=== [Backend] get_directory_children called for path: {}",
-            path
-        );
-
-        let path = Path::new(path);
-        if !path.exists() {
-            println!("=== [Backend] Path does not exist: {}", path.display());
-            return Err("Path does not exist".to_string());
-        }
-
-        println!("=== [Backend] Reading directory: {}", path.display());
-        let entries = match fs::read_dir(path) {
-            Ok(entries) => entries,
-            Err(e) => {
-                println!("=== [Backend] Failed to read directory: {}", e);
-                return Err(e.to_string());
-            }
-        };
-
-        // Use rayon for parallel processing of directory entries
-        let mut children: Vec<FileNode> = entries
-            .par_bridge() // Convert to parallel iterator
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| {
-                let entry_path = entry.path();
-                let name = entry.file_name().to_string_lossy().to_string();
-
-                println!("=== [Backend] Processing entry: {}", name);
-
-                match fs::metadata(&entry_path) {
-                    Ok(metadata) => {
-                        if metadata.is_dir() {
-                            // Try to get cached size, otherwise calculate
-                            let size = if let Some(cached_info) =
-                                self.cache.get(&entry_path.to_string_lossy().to_string())
-                            {
-                                println!(
-                                    "=== [Backend] Found cached size for directory {}: {} bytes",
-                                    name, cached_info.size
-                                );
-                                cached_info.size
-                            } else {
-                                println!("=== [Backend] Calculating size for directory: {}", name);
-                                let calculated_size =
-                                    self.calculate_directory_size(&entry_path).unwrap_or(0);
-                                println!(
-                                    "=== [Backend] Calculated size for directory {}: {} bytes",
-                                    name, calculated_size
-                                );
-                                calculated_size
-                            };
-
-                            Some(FileNode {
-                                name,
-                                path: entry_path.to_string_lossy().to_string(),
-                                size,
-                                is_directory: true,
-                                children: vec![], // Don't populate children, load on demand
-                                inode: self.get_inode(&metadata),
-                            })
-                        } else {
-                            let file_size = metadata.len();
-                            if cfg!(debug_assertions) {
-                                println!(
-                                    "=== [Backend] Processing file {}: {} bytes",
-                                    name, file_size
-                                );
-                            }
-                            Some(FileNode {
-                                name,
-                                path: entry_path.to_string_lossy().to_string(),
-                                size: file_size,
-                                is_directory: false,
-                                children: vec![],
-                                inode: self.get_inode(&metadata),
-                            })
-                        }
-                    }
-                    Err(e) => {
-                        // 静默处理权限错误
-                        if cfg!(debug_assertions) {
-                            println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
-                        }
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        println!(
-            "=== [Backend] Found {} entries before filtering",
-            children.len()
-        );
-
-        // Sort by size (largest first)
-        children.sort_by(|a, b| b.size.cmp(&a.size));
-
-        // Note: We don't apply MIN_SIZE_THRESHOLD filtering here because get_directory_children
-        // is meant to return all immediate children regardless of size, unlike scan_directory
-        // which is used for visualization and applies size filtering
-
-        println!(
-            "=== [Backend] Final result: {} items (no size filtering applied)",
-            children.len()
-        );
-        Ok(children)
     }
 
     // Scan all depths to calculate total size for a directory
@@ -677,191 +504,6 @@ impl DiskScanner {
         Ok(children)
     }
 
-    fn calculate_directory_size(&self, path: &Path) -> Result<u64, String> {
-        if let Some(cached_info) = self.cache.get(&path.to_string_lossy().to_string()) {
-            return Ok(cached_info.size);
-        }
-
-        // Use scan_node to properly handle hard links and other edge cases
-        match self.scan_node(path, 0) {
-            Ok(node) => Ok(node.size),
-            Err(_) => Ok(0),
-        }
-    }
-
-    // Legacy method for compatibility
-    pub fn scan_directory(&mut self, path: &str) -> Result<DiskScanResult, String> {
-        let path = Path::new(path);
-        if !path.exists() {
-            return Err("Path does not exist".to_string());
-        }
-
-        let start_time = Instant::now();
-        let mut root = self.scan_node(path, 0)?;
-        let scan_duration = start_time.elapsed();
-
-        println!("Scan completed in {:?}", scan_duration);
-
-        let total_size = root.size;
-        let (file_count, dir_count) = self.count_nodes(&root);
-
-        self.sort_nodes_by_size(&mut root);
-
-        Ok(DiskScanResult {
-            root,
-            total_size,
-            file_count,
-            dir_count,
-        })
-    }
-
-    fn scan_node(&self, path: &Path, depth: usize) -> Result<FileNode, String> {
-        // 首先检查是否为符号链接
-        let symlink_metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-
-        // 如果是符号链接，不计算其大小（特别是符号链接的文件夹）
-        if symlink_metadata.file_type().is_symlink() {
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
-
-            return Ok(FileNode {
-                name,
-                path: path.to_string_lossy().to_string(),
-                size: 0,             // 符号链接不计算大小
-                is_directory: false, // 符号链接视为文件，不当作目录处理
-                children: vec![],
-                inode: None, // 符号链接不使用inode去重
-            });
-        }
-
-        // 对于普通文件和目录，使用正常的metadata
-        let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        let inode = self.get_inode(&metadata);
-
-        // 硬链接检测 - 现在每个硬链接都计算file_length
-        if let Some(inode_val) = inode {
-            let key = (metadata.dev(), inode_val);
-            if self.seen_inodes.contains_key(&key) {
-                // 每个硬链接都计算file_length - 不再设为0
-                return Ok(FileNode {
-                    name,
-                    path: path.to_string_lossy().to_string(),
-                    size: metadata.len(), // 每个硬链接都计算实际的file_length
-                    is_directory: metadata.is_dir(),
-                    children: vec![],
-                    inode: Some(inode_val),
-                });
-            }
-            self.seen_inodes.insert(key, true);
-        }
-
-        if metadata.is_dir() {
-            // 移除max_depth检查，总是扫描所有深度以正确计算大小
-            self.scan_directory_node(path, name, inode, depth)
-        } else {
-            // 普通文件：计算file_length
-            Ok(FileNode {
-                name,
-                path: path.to_string_lossy().to_string(),
-                size: metadata.len(), // 只计算file_length
-                is_directory: false,
-                children: vec![],
-                inode,
-            })
-        }
-    }
-
-    fn scan_directory_node(
-        &self,
-        path: &Path,
-        name: String,
-        inode: Option<u64>,
-        depth: usize,
-    ) -> Result<FileNode, String> {
-        let entries = match fs::read_dir(path) {
-            Ok(entries) => entries,
-            Err(e) => {
-                // 统计错误类型并静默处理
-                if e.to_string().contains("Permission denied")
-                    || e.to_string().contains("Operation not permitted")
-                {
-                    self.permission_errors.fetch_add(1, Ordering::Relaxed);
-                } else if e.to_string().contains("No such file")
-                    || e.to_string().contains("os error 2")
-                {
-                    self.not_found_errors.fetch_add(1, Ordering::Relaxed);
-                }
-
-                // 只在调试模式下记录
-                if cfg!(debug_assertions) {
-                    eprintln!("Debug: Failed to read directory {}: {}", path.display(), e);
-                }
-                return Ok(FileNode {
-                    name,
-                    path: path.to_string_lossy().to_string(),
-                    size: 0,
-                    is_directory: true,
-                    children: vec![],
-                    inode,
-                });
-            }
-        };
-
-        let mut entry_list: Vec<_> = entries.filter_map(|entry| entry.ok()).collect();
-
-        entry_list.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
-
-        const MAX_ENTRIES_PER_DIR: usize = 500;
-        if entry_list.len() > MAX_ENTRIES_PER_DIR {
-            entry_list.truncate(MAX_ENTRIES_PER_DIR);
-        }
-
-        let children: Vec<FileNode> = entry_list
-            .par_iter()
-            .filter_map(|entry| self.scan_node(&entry.path(), depth + 1).ok())
-            .collect();
-
-        // 维护inode集合，对重复inode进行去重
-        let mut folder_inode_set = std::collections::HashSet::new();
-        let mut total_size = 0u64;
-
-        for child in &children {
-            if let Some(child_inode) = child.inode {
-                // 只有文件（非目录）才参与inode去重
-                if !child.is_directory {
-                    if !folder_inode_set.contains(&child_inode) {
-                        folder_inode_set.insert(child_inode);
-                        total_size += child.size;
-                    }
-                } else {
-                    // 目录直接累加大小
-                    total_size += child.size;
-                }
-            } else {
-                // 没有inode信息的文件直接累加大小
-                total_size += child.size;
-            }
-        }
-
-        Ok(FileNode {
-            name,
-            path: path.to_string_lossy().to_string(),
-            size: total_size,
-            is_directory: true,
-            children,
-            inode,
-        })
-    }
-
     fn get_inode(&self, metadata: &fs::Metadata) -> Option<u64> {
         #[cfg(unix)]
         {
@@ -871,33 +513,6 @@ impl DiskScanner {
         #[cfg(not(unix))]
         {
             None
-        }
-    }
-
-    fn count_nodes(&self, node: &FileNode) -> (u64, u64) {
-        if node.is_directory {
-            let (mut files, mut dirs) = (0, 1);
-            for child in &node.children {
-                let (f, d) = self.count_nodes(child);
-                files += f;
-                dirs += d;
-            }
-            (files, dirs)
-        } else {
-            // 每个硬链接都计算为文件 - 不再检查size > 0
-            (1, 0)
-        }
-    }
-
-    fn sort_nodes_by_size(&mut self, node: &mut FileNode) {
-        if node.is_directory {
-            node.children.sort_by(|a, b| b.size.cmp(&a.size));
-            const MIN_SIZE_THRESHOLD: u64 = 1024;
-            node.children
-                .retain(|child| child.size >= MIN_SIZE_THRESHOLD || child.is_directory);
-            for child in &mut node.children {
-                self.sort_nodes_by_size(child);
-            }
         }
     }
 }
@@ -938,59 +553,6 @@ pub fn build_directory_cache(path: String, max_depth: Option<usize>) -> Result<S
 }
 
 #[tauri::command]
-pub fn get_directory_info(path: String) -> Result<DirectoryInfo, String> {
-    println!(
-        "=== [Backend] Tauri command get_directory_info called with path: {}",
-        path
-    );
-
-    // Try to get from global cache first
-    println!("=== [Backend] Checking global cache for path: {}", path);
-    if let Ok(global_cache) = DIRECTORY_CACHE.read() {
-        if let Some(ref cache) = *global_cache {
-            if let Some(info) = cache.get(&path) {
-                println!("=== [Backend] Found in global cache: {:?}", info);
-                return Ok(info.clone());
-            }
-        }
-    }
-
-    println!("=== [Backend] Not found in global cache, creating scanner...");
-    // If not in global cache, create a scanner and scan on demand
-    let scanner = DiskScanner::new();
-    let result = scanner.get_directory_info(&path);
-
-    match &result {
-        Ok(info) => println!("=== [Backend] get_directory_info successful: {:?}", info),
-        Err(e) => println!("=== [Backend] get_directory_info error: {}", e),
-    }
-    result
-}
-
-#[tauri::command]
-pub fn get_directory_children(path: String) -> Result<Vec<FileNode>, String> {
-    println!(
-        "=== [Backend] Tauri command get_directory_children called with path: {}",
-        path
-    );
-
-    // Use rayon for parallel processing
-    let result = rayon::scope(|_s| {
-        let scanner = DiskScanner::new();
-        scanner.get_directory_children(&path)
-    });
-
-    match &result {
-        Ok(children) => println!(
-            "=== [Backend] Successfully returning {} children",
-            children.len()
-        ),
-        Err(e) => println!("=== [Backend] Error in get_directory_children: {}", e),
-    }
-    result
-}
-
-#[tauri::command]
 pub fn get_directory_children_with_depth(
     path: String,
     max_depth: u32,
@@ -1023,19 +585,6 @@ pub fn get_directory_children_with_depth(
         ),
     }
     result
-}
-
-#[tauri::command]
-pub fn scan_directory(path: String, max_depth: Option<usize>) -> Result<DiskScanResult, String> {
-    // Use rayon for parallel processing
-    rayon::scope(|_s| {
-        let mut scanner = if let Some(depth) = max_depth {
-            DiskScanner::with_max_depth(depth)
-        } else {
-            DiskScanner::new()
-        };
-        scanner.scan_directory(&path)
-    })
 }
 
 #[cfg(test)]
@@ -1486,16 +1035,19 @@ mod tests {
         let result = build_directory_cache(path.clone(), Some(2));
         assert!(result.is_ok());
 
-        // Test get_directory_info command
-        let result = get_directory_info(path.clone());
+        // Test get_directory_children_with_depth command (replaces get_directory_info and get_directory_children)
+        let result = get_directory_children_with_depth(path.clone(), 0);
         assert!(result.is_ok());
 
-        // Test get_directory_children command
-        let result = get_directory_children(path.clone());
+        // Test get_system_drives command
+        let result = get_system_drives();
         assert!(result.is_ok());
 
-        // Test scan_directory command
-        let result = scan_directory(path, Some(2));
+        // Test error stats commands
+        let result = get_error_stats();
+        assert!(result.is_ok());
+
+        let result = reset_error_stats();
         assert!(result.is_ok());
     }
 }

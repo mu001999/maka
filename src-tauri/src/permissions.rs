@@ -1,7 +1,5 @@
-use std::path::Path;
 use std::process::Command;
 use tauri::api::dialog;
-use tauri::{Manager, Runtime};
 
 #[tauri::command]
 pub async fn request_disk_access() -> Result<bool, String> {
@@ -99,46 +97,4 @@ fn check_full_disk_access() -> Result<bool, String> {
     }
 
     Ok(false)
-}
-
-#[tauri::command]
-pub async fn check_permissions<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
-    path: String,
-) -> Result<bool, String> {
-    let path = Path::new(&path);
-    let path_display = path.display().to_string();
-
-    // Check if we can read the directory
-    if path.is_dir() {
-        match path.read_dir() {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                // Show permission dialog
-                if let Some(window) = app_handle.get_window("main") {
-                    let error_msg = format!(
-                        "Cannot access {}: {}. Would you like to grant access?",
-                        path_display, e
-                    );
-                    let path_clone = path_display.clone();
-
-                    dialog::ask(
-                        Some(&window),
-                        "Permission Required",
-                        error_msg,
-                        move |answer| {
-                            if answer {
-                                // Try to open the directory in Finder to trigger macOS permission dialog
-                                let _ =
-                                    std::process::Command::new("open").arg(&path_clone).output();
-                            }
-                        },
-                    );
-                }
-                Err(format!("Permission denied: {}", e))
-            }
-        }
-    } else {
-        Ok(true)
-    }
 }

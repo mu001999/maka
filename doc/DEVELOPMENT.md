@@ -118,7 +118,7 @@ impl DiskScanner {
         // 实现
     }
     
-    pub fn scan_directory(&mut self, path: &str) -> Result<Vec<FileInfo>, Error> {
+    pub fn build_directory_cache(&mut self, path: &str, max_depth: usize) -> Result<String, Error> {
         // 错误处理
         match fs::read_dir(path) {
             Ok(entries) => { /* 处理 */ },

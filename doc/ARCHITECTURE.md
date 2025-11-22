@@ -90,9 +90,12 @@
 - **职责**: Tauri 应用入口和命令定义
 - **命令**:
   - `get_system_drives`: 获取系统驱动器
-  - `build_cache`: 构建目录缓存
-  - `get_directory_children`: 获取子目录内容
-  - `get_file_info`: 获取文件信息
+  - `build_directory_cache`: 构建目录缓存
+  - `get_directory_children_with_depth`: 获取指定深度的子目录内容
+  - `get_error_stats`: 获取错误统计
+  - `reset_error_stats`: 重置错误统计
+  - `request_disk_access`: 请求磁盘访问权限
+  - `select_directory`: 选择目录
 
 #### disk_scanner.rs
 - **核心结构**:

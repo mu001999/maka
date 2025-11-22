@@ -118,7 +118,7 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.get_directory_children(&root_path);
+        let result = scanner.get_directory_children_with_depth(&root_path, 0);
         assert!(
             result.is_ok(),
             "Should successfully get root directory children"
@@ -183,7 +183,7 @@ mod path_validation_tests {
             .to_string_lossy()
             .to_string();
 
-        let result = scanner.get_directory_children(&documents_path);
+        let result = scanner.get_directory_children_with_depth(&documents_path, 0);
         assert!(
             result.is_ok(),
             "Should successfully get Documents directory children"
@@ -354,46 +354,72 @@ mod path_validation_tests {
     }
 
     #[test]
-    fn test_get_directory_info_accuracy() {
+    fn test_get_directory_children_with_depth_accuracy() {
         let temp_dir = create_complex_test_structure();
         let scanner = DiskScanner::new();
 
-        // 测试根目录信息
+        // 测试根目录信息 (depth 0)
         let root_path = temp_dir.path().to_string_lossy().to_string();
-        let root_info = scanner.get_directory_info(&root_path).unwrap();
+        let root_children = scanner
+            .get_directory_children_with_depth(&root_path, 0)
+            .unwrap();
 
-        println!("Root info: {:?}", root_info);
+        println!("Root children count: {}", root_children.len());
 
-        assert!(root_info.is_directory);
-        assert!(root_info.children_count >= 5);
-        // Note: Directory size might be 0 due to filtering in scan_node method
-        // assert!(root_info.size > 0);
-        assert!(root_info.children_names.contains(&"Documents".to_string()));
-        assert!(root_info.children_names.contains(&"Images".to_string()));
-        assert!(root_info.children_names.contains(&"Videos".to_string()));
+        // Verify we have expected items at root level
+        let has_documents = root_children
+            .iter()
+            .any(|c| c.name == "Documents" && c.is_directory);
+        let has_images = root_children
+            .iter()
+            .any(|c| c.name == "Images" && c.is_directory);
+        let has_videos = root_children
+            .iter()
+            .any(|c| c.name == "Videos" && c.is_directory);
+        let has_readme = root_children
+            .iter()
+            .any(|c| c.name == "readme.txt" && !c.is_directory);
+        let has_config = root_children
+            .iter()
+            .any(|c| c.name == "config.json" && !c.is_directory);
 
-        // 测试Documents目录信息
+        assert!(has_documents, "Should find Documents directory");
+        assert!(has_images, "Should find Images directory");
+        assert!(has_videos, "Should find Videos directory");
+        assert!(has_readme, "Should find readme.txt file");
+        assert!(has_config, "Should find config.json file");
+        assert!(
+            root_children.len() >= 5,
+            "Root should have at least 5 children"
+        );
+
+        // 测试Documents目录信息 (depth 0)
         let documents_path = temp_dir
             .path()
             .join("Documents")
             .to_string_lossy()
             .to_string();
-        let documents_info = scanner.get_directory_info(&documents_path).unwrap();
+        let documents_children = scanner
+            .get_directory_children_with_depth(&documents_path, 0)
+            .unwrap();
 
-        println!("Documents info: {:?}", documents_info);
+        println!("Documents children count: {}", documents_children.len());
 
-        assert!(documents_info.is_directory);
-        assert!(documents_info.children_count >= 2);
-        // Note: Directory size might be 0 due to filtering in scan_node method
-        // assert!(documents_info.size > 0);
-        assert!(documents_info
-            .children_names
-            .contains(&"Projects".to_string()));
-        assert!(documents_info
-            .children_names
-            .contains(&"notes.txt".to_string()));
+        let has_projects = documents_children
+            .iter()
+            .any(|c| c.name == "Projects" && c.is_directory);
+        let has_notes = documents_children
+            .iter()
+            .any(|c| c.name == "notes.txt" && !c.is_directory);
 
-        // 测试ProjectA目录信息
+        assert!(has_projects, "Should find Projects directory");
+        assert!(has_notes, "Should find notes.txt file");
+        assert!(
+            documents_children.len() >= 2,
+            "Documents should have at least 2 children"
+        );
+
+        // 测试ProjectA目录信息 (depth 0)
         let project_a_path = temp_dir
             .path()
             .join("Documents")
@@ -401,20 +427,26 @@ mod path_validation_tests {
             .join("ProjectA")
             .to_string_lossy()
             .to_string();
-        let project_a_info = scanner.get_directory_info(&project_a_path).unwrap();
+        let project_a_children = scanner
+            .get_directory_children_with_depth(&project_a_path, 0)
+            .unwrap();
 
-        println!("ProjectA info: {:?}", project_a_info);
+        println!("ProjectA children count: {}", project_a_children.len());
 
-        assert!(project_a_info.is_directory);
-        assert_eq!(project_a_info.children_count, 2);
-        // Note: Directory size might be 0 due to filtering in scan_node method
-        // assert!(project_a_info.size > 0);
-        assert!(project_a_info
-            .children_names
-            .contains(&"main.py".to_string()));
-        assert!(project_a_info
-            .children_names
-            .contains(&"utils.py".to_string()));
+        let has_main_py = project_a_children
+            .iter()
+            .any(|c| c.name == "main.py" && !c.is_directory);
+        let has_utils_py = project_a_children
+            .iter()
+            .any(|c| c.name == "utils.py" && !c.is_directory);
+
+        assert!(has_main_py, "Should find main.py file");
+        assert!(has_utils_py, "Should find utils.py file");
+        assert_eq!(
+            project_a_children.len(),
+            2,
+            "ProjectA should have exactly 2 children"
+        );
     }
 
     #[test]
@@ -427,25 +459,34 @@ mod path_validation_tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Cache built successfully");
 
-        // 验证缓存功能通过get_directory_info方法
-        let root_info = scanner.get_directory_info(&root_path).unwrap();
-        assert!(root_info.is_directory);
-        assert!(root_info.children_count >= 5);
-        assert!(root_info.size > 0);
-
-        let documents_info = scanner
-            .get_directory_info(&format!("{}/Documents", root_path))
+        // 验证缓存功能通过get_directory_children_with_depth方法 (replaces get_directory_info)
+        let root_children = scanner
+            .get_directory_children_with_depth(&root_path, 0)
             .unwrap();
-        assert!(documents_info.is_directory);
-        assert!(documents_info.children_count >= 2);
-        assert!(documents_info.size > 0);
+        assert!(
+            root_children.len() >= 5,
+            "Root should have at least 5 children"
+        );
 
-        let project_a_info = scanner
-            .get_directory_info(&format!("{}/Documents/Projects/ProjectA", root_path))
+        let documents_children = scanner
+            .get_directory_children_with_depth(&format!("{}/Documents", root_path), 0)
             .unwrap();
-        assert!(project_a_info.is_directory);
-        assert_eq!(project_a_info.children_count, 2);
-        assert!(project_a_info.size > 0);
+        assert!(
+            documents_children.len() >= 2,
+            "Documents should have at least 2 children"
+        );
+
+        let project_a_children = scanner
+            .get_directory_children_with_depth(
+                &format!("{}/Documents/Projects/ProjectA", root_path),
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            project_a_children.len(),
+            2,
+            "ProjectA should have exactly 2 children"
+        );
     }
 
     #[test]
@@ -454,14 +495,8 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let empty_path = temp_dir.path().to_string_lossy().to_string();
 
-        // 测试空目录的子项获取
-        let children_result = scanner.get_directory_children(&empty_path);
-        assert!(children_result.is_ok());
-        let children = children_result.unwrap();
-        assert_eq!(children.len(), 0, "Empty directory should have no children");
-
-        // 测试空目录的带深度子项获取
-        let depth_result = scanner.get_directory_children_with_depth(&empty_path, 2);
+        // 测试空目录的带深度子项获取 (replaces get_directory_children)
+        let depth_result = scanner.get_directory_children_with_depth(&empty_path, 0);
         assert!(depth_result.is_ok());
         let depth_children = depth_result.unwrap();
         assert_eq!(
@@ -470,12 +505,15 @@ mod path_validation_tests {
             "Empty directory should have no children with depth"
         );
 
-        // 测试空目录的信息获取
-        let info_result = scanner.get_directory_info(&empty_path);
-        assert!(info_result.is_ok());
-        let info = info_result.unwrap();
-        assert_eq!(info.children_count, 0);
-        assert_eq!(info.size, 0);
+        // 测试空目录的带深度子项获取 (depth 2)
+        let depth_result2 = scanner.get_directory_children_with_depth(&empty_path, 2);
+        assert!(depth_result2.is_ok());
+        let depth_children2 = depth_result2.unwrap();
+        assert_eq!(
+            depth_children2.len(),
+            0,
+            "Empty directory should have no children with depth 2"
+        );
     }
 
     #[test]
@@ -778,8 +816,12 @@ mod path_validation_tests {
             .to_string_lossy()
             .to_string();
 
-        let info_result = scanner.get_directory_info(&file_path);
-        assert!(info_result.is_err());
-        assert!(info_result.unwrap_err().contains("not a directory"));
+        // Test that get_directory_children_with_depth returns error for file paths
+        let result = scanner.get_directory_children_with_depth(&file_path, 0);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        println!("Error message: {}", error_msg);
+        // The error message should indicate it's not a directory
+        assert!(error_msg.contains("Not a directory") || error_msg.contains("not a directory"));
     }
 }
