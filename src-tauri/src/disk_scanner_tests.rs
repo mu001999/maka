@@ -1,7 +1,7 @@
+use crate::disk_scanner::{DiskScanner, FileNode};
 use std::fs::{self, File};
 use std::io::Write;
 use tempfile::TempDir;
-use crate::disk_scanner::{DiskScanner, FileNode};
 
 /// 创建测试用的目录结构，包含文件和子目录
 fn create_complex_test_structure() -> TempDir {
@@ -19,8 +19,8 @@ fn create_complex_test_structure() -> TempDir {
 
     // 创建各种大小的文件
     let large_content = "A".repeat(5000); // 5000 bytes
-    let medium_content = "B".repeat(2000);  // 2000 bytes
-    let small_content = "C".repeat(500);   // 500 bytes
+    let medium_content = "B".repeat(2000); // 2000 bytes
+    let small_content = "C".repeat(500); // 500 bytes
 
     // 根目录文件
     let mut root_file = File::create(root.join("readme.txt")).unwrap();
@@ -33,18 +33,37 @@ fn create_complex_test_structure() -> TempDir {
     let mut doc_file = File::create(root.join("Documents").join("notes.txt")).unwrap();
     doc_file.write_all(large_content.as_bytes()).unwrap();
 
-    let mut project_file = File::create(root.join("Documents").join("Projects").join("README.md")).unwrap();
+    let mut project_file =
+        File::create(root.join("Documents").join("Projects").join("README.md")).unwrap();
     project_file.write_all(medium_content.as_bytes()).unwrap();
 
     // ProjectA 文件
-    let mut main_file = File::create(root.join("Documents").join("Projects").join("ProjectA").join("main.py")).unwrap();
+    let mut main_file = File::create(
+        root.join("Documents")
+            .join("Projects")
+            .join("ProjectA")
+            .join("main.py"),
+    )
+    .unwrap();
     main_file.write_all(large_content.as_bytes()).unwrap();
 
-    let mut utils_file = File::create(root.join("Documents").join("Projects").join("ProjectA").join("utils.py")).unwrap();
+    let mut utils_file = File::create(
+        root.join("Documents")
+            .join("Projects")
+            .join("ProjectA")
+            .join("utils.py"),
+    )
+    .unwrap();
     utils_file.write_all(small_content.as_bytes()).unwrap();
 
     // ProjectB 文件
-    let mut app_file = File::create(root.join("Documents").join("Projects").join("ProjectB").join("app.js")).unwrap();
+    let mut app_file = File::create(
+        root.join("Documents")
+            .join("Projects")
+            .join("ProjectB")
+            .join("app.js"),
+    )
+    .unwrap();
     app_file.write_all(medium_content.as_bytes()).unwrap();
 
     // Images 文件
@@ -58,7 +77,8 @@ fn create_complex_test_structure() -> TempDir {
     let mut video1 = File::create(root.join("Videos").join("video1.mp4")).unwrap();
     video1.write_all(large_content.as_bytes()).unwrap();
 
-    let mut movie_file = File::create(root.join("Videos").join("Movies").join("movie1.avi")).unwrap();
+    let mut movie_file =
+        File::create(root.join("Videos").join("Movies").join("movie1.avi")).unwrap();
     movie_file.write_all(large_content.as_bytes()).unwrap();
 
     temp_dir
@@ -78,9 +98,14 @@ fn validate_file_node(node: &FileNode, expected_name: &str, expected_is_dir: boo
 /// 验证目录节点及其子项的辅助函数
 fn validate_directory_node(node: &FileNode, expected_name: &str, expected_children_count: usize) {
     validate_file_node(node, expected_name, true);
-    assert_eq!(node.children.len(), expected_children_count,
+    assert_eq!(
+        node.children.len(),
+        expected_children_count,
         "Directory {} should have {} children, but found {}",
-        expected_name, expected_children_count, node.children.len());
+        expected_name,
+        expected_children_count,
+        node.children.len()
+    );
 }
 
 #[cfg(test)]
@@ -94,7 +119,10 @@ mod path_validation_tests {
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
         let result = scanner.get_directory_children(&root_path);
-        assert!(result.is_ok(), "Should successfully get root directory children");
+        assert!(
+            result.is_ok(),
+            "Should successfully get root directory children"
+        );
 
         let children = result.unwrap();
         assert!(children.len() >= 5, "Root should have at least 5 children");
@@ -110,25 +138,31 @@ mod path_validation_tests {
                 "Documents" => {
                     found_documents = true;
                     validate_file_node(child, "Documents", true);
-                },
+                }
                 "Images" => {
                     found_images = true;
                     validate_file_node(child, "Images", true);
-                },
+                }
                 "Videos" => {
                     found_videos = true;
                     validate_file_node(child, "Videos", true);
-                },
+                }
                 "readme.txt" => {
                     found_files += 1;
                     validate_file_node(child, "readme.txt", false);
-                    assert!(child.size >= 5000, "readme.txt should be at least 5000 bytes");
-                },
+                    assert!(
+                        child.size >= 5000,
+                        "readme.txt should be at least 5000 bytes"
+                    );
+                }
                 "config.json" => {
                     found_files += 1;
                     validate_file_node(child, "config.json", false);
-                    assert!(child.size >= 2000, "config.json should be at least 2000 bytes");
-                },
+                    assert!(
+                        child.size >= 2000,
+                        "config.json should be at least 2000 bytes"
+                    );
+                }
                 _ => {}
             }
         }
@@ -143,13 +177,23 @@ mod path_validation_tests {
     fn test_get_directory_children_nested_path() {
         let temp_dir = create_complex_test_structure();
         let scanner = DiskScanner::new();
-        let documents_path = temp_dir.path().join("Documents").to_string_lossy().to_string();
+        let documents_path = temp_dir
+            .path()
+            .join("Documents")
+            .to_string_lossy()
+            .to_string();
 
         let result = scanner.get_directory_children(&documents_path);
-        assert!(result.is_ok(), "Should successfully get Documents directory children");
+        assert!(
+            result.is_ok(),
+            "Should successfully get Documents directory children"
+        );
 
         let children = result.unwrap();
-        assert!(children.len() >= 2, "Documents should have at least 2 children");
+        assert!(
+            children.len() >= 2,
+            "Documents should have at least 2 children"
+        );
 
         let mut found_projects = false;
         let mut found_notes = false;
@@ -159,12 +203,15 @@ mod path_validation_tests {
                 "Projects" => {
                     found_projects = true;
                     validate_file_node(child, "Projects", true);
-                },
+                }
                 "notes.txt" => {
                     found_notes = true;
                     validate_file_node(child, "notes.txt", false);
-                    assert!(child.size >= 5000, "notes.txt should be at least 5000 bytes");
-                },
+                    assert!(
+                        child.size >= 5000,
+                        "notes.txt should be at least 5000 bytes"
+                    );
+                }
                 _ => {}
             }
         }
@@ -180,10 +227,16 @@ mod path_validation_tests {
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
         let result = scanner.get_directory_children_with_depth(&root_path, 1);
-        assert!(result.is_ok(), "Should successfully get children with depth 1");
+        assert!(
+            result.is_ok(),
+            "Should successfully get children with depth 1"
+        );
 
         let children = result.unwrap();
-        assert!(children.len() >= 5, "Root should have at least 5 children with depth 1");
+        assert!(
+            children.len() >= 5,
+            "Root should have at least 5 children with depth 1"
+        );
 
         // 验证Documents目录的子项（深度1）
         let documents = children.iter().find(|c| c.name == "Documents");
@@ -193,10 +246,17 @@ mod path_validation_tests {
         validate_directory_node(documents, "Documents", 2); // 应该有Projects子目录和notes.txt文件
 
         let projects = documents.children.iter().find(|c| c.name == "Projects");
-        assert!(projects.is_some(), "Documents should have Projects subdirectory");
+        assert!(
+            projects.is_some(),
+            "Documents should have Projects subdirectory"
+        );
 
         let projects = projects.unwrap();
-        assert_eq!(projects.children.len(), 0, "Projects should have no children at depth 1");
+        assert_eq!(
+            projects.children.len(),
+            0,
+            "Projects should have no children at depth 1"
+        );
     }
 
     #[test]
@@ -206,7 +266,10 @@ mod path_validation_tests {
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
         let result = scanner.get_directory_children_with_depth(&root_path, 2);
-        assert!(result.is_ok(), "Should successfully get children with depth 2");
+        assert!(
+            result.is_ok(),
+            "Should successfully get children with depth 2"
+        );
 
         let children = result.unwrap();
 
@@ -218,17 +281,27 @@ mod path_validation_tests {
         validate_directory_node(documents, "Documents", 2); // 应该有Projects子目录和notes.txt文件
 
         let projects = documents.children.iter().find(|c| c.name == "Projects");
-        assert!(projects.is_some(), "Documents should have Projects subdirectory");
+        assert!(
+            projects.is_some(),
+            "Documents should have Projects subdirectory"
+        );
 
         let projects = projects.unwrap();
         validate_directory_node(projects, "Projects", 3); // 应该有ProjectA, ProjectB, README.md
 
         // 验证Projects的子项
         let project_a = projects.children.iter().find(|c| c.name == "ProjectA");
-        assert!(project_a.is_some(), "Projects should have ProjectA subdirectory");
+        assert!(
+            project_a.is_some(),
+            "Projects should have ProjectA subdirectory"
+        );
 
         let project_a = project_a.unwrap();
-        assert_eq!(project_a.children.len(), 0, "ProjectA should have no children at depth 2");
+        assert_eq!(
+            project_a.children.len(),
+            0,
+            "ProjectA should have no children at depth 2"
+        );
     }
 
     #[test]
@@ -238,13 +311,20 @@ mod path_validation_tests {
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
         let result = scanner.get_directory_children_with_depth(&root_path, 3);
-        assert!(result.is_ok(), "Should successfully get children with depth 3");
+        assert!(
+            result.is_ok(),
+            "Should successfully get children with depth 3"
+        );
 
         let children = result.unwrap();
 
         // 验证ProjectA的子项（深度3）
         let documents = children.iter().find(|c| c.name == "Documents").unwrap();
-        let projects = documents.children.iter().find(|c| c.name == "Projects").unwrap();
+        let projects = documents
+            .children
+            .iter()
+            .find(|c| c.name == "Projects")
+            .unwrap();
         let project_a = projects.children.iter().find(|c| c.name == "ProjectA");
         assert!(project_a.is_some(), "Should find ProjectA at depth 3");
 
@@ -257,14 +337,20 @@ mod path_validation_tests {
 
         let main_py = main_py.unwrap();
         validate_file_node(main_py, "main.py", false);
-        assert!(main_py.size >= 5000, "main.py should be at least 5000 bytes");
+        assert!(
+            main_py.size >= 5000,
+            "main.py should be at least 5000 bytes"
+        );
 
         let utils_py = project_a.children.iter().find(|c| c.name == "utils.py");
         assert!(utils_py.is_some(), "ProjectA should have utils.py file");
 
         let utils_py = utils_py.unwrap();
         validate_file_node(utils_py, "utils.py", false);
-        assert!(utils_py.size >= 500, "utils.py should be at least 500 bytes");
+        assert!(
+            utils_py.size >= 500,
+            "utils.py should be at least 500 bytes"
+        );
     }
 
     #[test]
@@ -287,7 +373,11 @@ mod path_validation_tests {
         assert!(root_info.children_names.contains(&"Videos".to_string()));
 
         // 测试Documents目录信息
-        let documents_path = temp_dir.path().join("Documents").to_string_lossy().to_string();
+        let documents_path = temp_dir
+            .path()
+            .join("Documents")
+            .to_string_lossy()
+            .to_string();
         let documents_info = scanner.get_directory_info(&documents_path).unwrap();
 
         println!("Documents info: {:?}", documents_info);
@@ -296,11 +386,16 @@ mod path_validation_tests {
         assert!(documents_info.children_count >= 2);
         // Note: Directory size might be 0 due to filtering in scan_node method
         // assert!(documents_info.size > 0);
-        assert!(documents_info.children_names.contains(&"Projects".to_string()));
-        assert!(documents_info.children_names.contains(&"notes.txt".to_string()));
+        assert!(documents_info
+            .children_names
+            .contains(&"Projects".to_string()));
+        assert!(documents_info
+            .children_names
+            .contains(&"notes.txt".to_string()));
 
         // 测试ProjectA目录信息
-        let project_a_path = temp_dir.path()
+        let project_a_path = temp_dir
+            .path()
             .join("Documents")
             .join("Projects")
             .join("ProjectA")
@@ -314,8 +409,12 @@ mod path_validation_tests {
         assert_eq!(project_a_info.children_count, 2);
         // Note: Directory size might be 0 due to filtering in scan_node method
         // assert!(project_a_info.size > 0);
-        assert!(project_a_info.children_names.contains(&"main.py".to_string()));
-        assert!(project_a_info.children_names.contains(&"utils.py".to_string()));
+        assert!(project_a_info
+            .children_names
+            .contains(&"main.py".to_string()));
+        assert!(project_a_info
+            .children_names
+            .contains(&"utils.py".to_string()));
     }
 
     #[test]
@@ -334,12 +433,16 @@ mod path_validation_tests {
         assert!(root_info.children_count >= 5);
         assert!(root_info.size > 0);
 
-        let documents_info = scanner.get_directory_info(&format!("{}/Documents", root_path)).unwrap();
+        let documents_info = scanner
+            .get_directory_info(&format!("{}/Documents", root_path))
+            .unwrap();
         assert!(documents_info.is_directory);
         assert!(documents_info.children_count >= 2);
         assert!(documents_info.size > 0);
 
-        let project_a_info = scanner.get_directory_info(&format!("{}/Documents/Projects/ProjectA", root_path)).unwrap();
+        let project_a_info = scanner
+            .get_directory_info(&format!("{}/Documents/Projects/ProjectA", root_path))
+            .unwrap();
         assert!(project_a_info.is_directory);
         assert_eq!(project_a_info.children_count, 2);
         assert!(project_a_info.size > 0);
@@ -361,7 +464,11 @@ mod path_validation_tests {
         let depth_result = scanner.get_directory_children_with_depth(&empty_path, 2);
         assert!(depth_result.is_ok());
         let depth_children = depth_result.unwrap();
-        assert_eq!(depth_children.len(), 0, "Empty directory should have no children with depth");
+        assert_eq!(
+            depth_children.len(),
+            0,
+            "Empty directory should have no children with depth"
+        );
 
         // 测试空目录的信息获取
         let info_result = scanner.get_directory_info(&empty_path);
@@ -396,15 +503,23 @@ mod path_validation_tests {
         parent_file.write_all(content_2000.as_bytes()).unwrap();
 
         // Child1 files
-        let mut child1_file = File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
+        let mut child1_file =
+            File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
         child1_file.write_all(content_3000.as_bytes()).unwrap();
 
         // Child2 files
-        let mut child2_file = File::create(root.join("parent").join("child2").join("child2_file.txt")).unwrap();
+        let mut child2_file =
+            File::create(root.join("parent").join("child2").join("child2_file.txt")).unwrap();
         child2_file.write_all(content_1000.as_bytes()).unwrap();
 
         // Grandchild files
-        let mut grandchild_file = File::create(root.join("parent").join("child1").join("grandchild").join("grandchild_file.txt")).unwrap();
+        let mut grandchild_file = File::create(
+            root.join("parent")
+                .join("child1")
+                .join("grandchild")
+                .join("grandchild_file.txt"),
+        )
+        .unwrap();
         grandchild_file.write_all(content_2000.as_bytes()).unwrap();
 
         let scanner = DiskScanner::new();
@@ -412,12 +527,18 @@ mod path_validation_tests {
 
         // Test with depth 3 to see all nested structure
         let result = scanner.get_directory_children_with_depth(&root_path, 3);
-        assert!(result.is_ok(), "Should successfully get children with depth 3");
+        assert!(
+            result.is_ok(),
+            "Should successfully get children with depth 3"
+        );
 
         let children = result.unwrap();
 
         // Find the parent directory
-        let parent = children.iter().find(|c| c.name == "parent").expect("Should find parent directory");
+        let parent = children
+            .iter()
+            .find(|c| c.name == "parent")
+            .expect("Should find parent directory");
 
         // Parent directory should contain: parent_file.txt (2000), child1 (5000 total), child2 (1000 total)
         // Expected parent size: 2000 + 5000 + 1000 = 8000
@@ -426,8 +547,15 @@ mod path_validation_tests {
 
         // Verify parent contains expected children
         let parent_file = parent.children.iter().find(|c| c.name == "parent_file.txt");
-        assert!(parent_file.is_some(), "Parent should contain parent_file.txt");
-        assert_eq!(parent_file.unwrap().size, 2000, "parent_file.txt should be 2000 bytes");
+        assert!(
+            parent_file.is_some(),
+            "Parent should contain parent_file.txt"
+        );
+        assert_eq!(
+            parent_file.unwrap().size,
+            2000,
+            "parent_file.txt should be 2000 bytes"
+        );
 
         let child1 = parent.children.iter().find(|c| c.name == "child1");
         assert!(child1.is_some(), "Parent should contain child1 directory");
@@ -440,24 +568,51 @@ mod path_validation_tests {
         // Child1 should contain: child1_file.txt (3000) + grandchild (2000 total) = 5000
         println!("Child1 directory size: {}", child1.size);
         let child1_file = child1.children.iter().find(|c| c.name == "child1_file.txt");
-        assert!(child1_file.is_some(), "Child1 should contain child1_file.txt");
-        assert_eq!(child1_file.unwrap().size, 3000, "child1_file.txt should be 3000 bytes");
+        assert!(
+            child1_file.is_some(),
+            "Child1 should contain child1_file.txt"
+        );
+        assert_eq!(
+            child1_file.unwrap().size,
+            3000,
+            "child1_file.txt should be 3000 bytes"
+        );
 
         let grandchild = child1.children.iter().find(|c| c.name == "grandchild");
-        assert!(grandchild.is_some(), "Child1 should contain grandchild directory");
+        assert!(
+            grandchild.is_some(),
+            "Child1 should contain grandchild directory"
+        );
         let grandchild = grandchild.unwrap();
         println!("Grandchild directory size: {}", grandchild.size);
 
         // Grandchild should contain: grandchild_file.txt (2000)
-        let grandchild_file = grandchild.children.iter().find(|c| c.name == "grandchild_file.txt");
-        assert!(grandchild_file.is_some(), "Grandchild should contain grandchild_file.txt");
-        assert_eq!(grandchild_file.unwrap().size, 2000, "grandchild_file.txt should be 2000 bytes");
+        let grandchild_file = grandchild
+            .children
+            .iter()
+            .find(|c| c.name == "grandchild_file.txt");
+        assert!(
+            grandchild_file.is_some(),
+            "Grandchild should contain grandchild_file.txt"
+        );
+        assert_eq!(
+            grandchild_file.unwrap().size,
+            2000,
+            "grandchild_file.txt should be 2000 bytes"
+        );
 
         // Child2 should contain: child2_file.txt (1000)
         println!("Child2 directory size: {}", child2.size);
         let child2_file = child2.children.iter().find(|c| c.name == "child2_file.txt");
-        assert!(child2_file.is_some(), "Child2 should contain child2_file.txt");
-        assert_eq!(child2_file.unwrap().size, 1000, "child2_file.txt should be 1000 bytes");
+        assert!(
+            child2_file.is_some(),
+            "Child2 should contain child2_file.txt"
+        );
+        assert_eq!(
+            child2_file.unwrap().size,
+            1000,
+            "child2_file.txt should be 1000 bytes"
+        );
 
         // Now verify the directory size calculations
         // Expected sizes:
@@ -466,7 +621,10 @@ mod path_validation_tests {
         // - child2: 1000 (child2_file.txt)
         // - parent: 2000 (parent_file.txt) + 5000 (child1) + 1000 (child2) = 8000
 
-        assert_eq!(grandchild.size, 2000, "Grandchild directory size should be 2000");
+        assert_eq!(
+            grandchild.size, 2000,
+            "Grandchild directory size should be 2000"
+        );
         assert_eq!(child1.size, 5000, "Child1 directory size should be 5000");
         assert_eq!(child2.size, 1000, "Child2 directory size should be 1000");
         assert_eq!(parent.size, 8000, "Parent directory size should be 8000");
@@ -496,11 +654,18 @@ mod path_validation_tests {
         assert!(result.is_ok());
 
         let children = result.unwrap();
-        let test_dir = children.iter().find(|c| c.name == "test_dir").expect("Should find test_dir");
+        let test_dir = children
+            .iter()
+            .find(|c| c.name == "test_dir")
+            .expect("Should find test_dir");
 
         // test_dir should contain file1.txt (1000) + file2.txt (2000) = 3000
         assert_eq!(test_dir.size, 3000, "test_dir size should be 3000");
-        assert_eq!(test_dir.children.len(), 2, "test_dir should have 2 children");
+        assert_eq!(
+            test_dir.children.len(),
+            2,
+            "test_dir should have 2 children"
+        );
     }
 
     #[test]
@@ -526,7 +691,10 @@ mod path_validation_tests {
         assert!(result.is_ok());
 
         let children = result.unwrap();
-        let parent = children.iter().find(|c| c.name == "parent").expect("Should find parent");
+        let parent = children
+            .iter()
+            .find(|c| c.name == "parent")
+            .expect("Should find parent");
 
         // parent should contain parent_file.txt (500) + empty1 (0) + empty2 (0) = 500
         assert_eq!(parent.size, 500, "Parent directory size should be 500");
@@ -551,10 +719,17 @@ mod path_validation_tests {
         let mut parent_file = File::create(root.join("parent").join("parent_file.txt")).unwrap();
         parent_file.write_all(content_2000.as_bytes()).unwrap();
 
-        let mut child1_file = File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
+        let mut child1_file =
+            File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
         child1_file.write_all(content_3000.as_bytes()).unwrap();
 
-        let mut grandchild_file = File::create(root.join("parent").join("child1").join("grandchild").join("grandchild_file.txt")).unwrap();
+        let mut grandchild_file = File::create(
+            root.join("parent")
+                .join("child1")
+                .join("grandchild")
+                .join("grandchild_file.txt"),
+        )
+        .unwrap();
         grandchild_file.write_all(content_4000.as_bytes()).unwrap();
 
         let scanner = DiskScanner::new();
@@ -567,7 +742,10 @@ mod path_validation_tests {
         let children = result.unwrap();
         println!("With max_depth = 0, found {} children", children.len());
         for child in &children {
-            println!("  - {} ({} bytes, dir: {})", child.name, child.size, child.is_directory);
+            println!(
+                "  - {} ({} bytes, dir: {})",
+                child.name, child.size, child.is_directory
+            );
         }
 
         // With max_depth = 0, should return only files (no directories)
@@ -581,7 +759,10 @@ mod path_validation_tests {
         assert!(result_depth1.is_ok());
 
         let children_depth1 = result_depth1.unwrap();
-        let parent = children_depth1.iter().find(|c| c.name == "parent").expect("Should find parent");
+        let parent = children_depth1
+            .iter()
+            .find(|c| c.name == "parent")
+            .expect("Should find parent");
 
         // parent should have size = parent_file.txt (2000) + child1 (3000 + 4000) = 9000
         assert_eq!(parent.size, 9000, "Parent directory size should be 9000");
@@ -591,7 +772,11 @@ mod path_validation_tests {
     fn test_file_path_errors() {
         let temp_dir = create_complex_test_structure();
         let scanner = DiskScanner::new();
-        let file_path = temp_dir.path().join("readme.txt").to_string_lossy().to_string();
+        let file_path = temp_dir
+            .path()
+            .join("readme.txt")
+            .to_string_lossy()
+            .to_string();
 
         let info_result = scanner.get_directory_info(&file_path);
         assert!(info_result.is_err());

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 use tauri::api::dialog;
-use tauri::{Runtime, Manager};
+use tauri::{Manager, Runtime};
 
 #[tauri::command]
 pub async fn request_disk_access() -> Result<bool, String> {
@@ -10,7 +10,7 @@ pub async fn request_disk_access() -> Result<bool, String> {
         // Check if we have full disk access
         match check_full_disk_access() {
             Ok(true) => return Ok(true),
-            Ok(false) => {},
+            Ok(false) => {}
             Err(e) => return Err(e),
         }
 
@@ -28,7 +28,7 @@ pub async fn request_disk_access() -> Result<bool, String> {
                         .args(&["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
                         .spawn();
                 }
-            }
+            },
         );
 
         Ok(false)
@@ -41,9 +41,9 @@ pub async fn request_disk_access() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, String> {
-    use tauri::api::dialog::FileDialogBuilder;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
+    use tauri::api::dialog::FileDialogBuilder;
 
     println!("=== [Backend] Opening directory selection dialog...");
 
@@ -62,7 +62,8 @@ pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, 
 
     // Wait for the dialog to complete (with timeout)
     let start = Instant::now();
-    while start.elapsed().as_secs() < 60 { // 60 second timeout
+    while start.elapsed().as_secs() < 60 {
+        // 60 second timeout
         std::thread::sleep(Duration::from_millis(100));
         let result_guard = result.lock().unwrap();
         if result_guard.is_some() {
@@ -101,7 +102,10 @@ fn check_full_disk_access() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn check_permissions<R: Runtime>(app_handle: tauri::AppHandle<R>, path: String) -> Result<bool, String> {
+pub async fn check_permissions<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    path: String,
+) -> Result<bool, String> {
     let path = Path::new(&path);
     let path_display = path.display().to_string();
 
@@ -112,7 +116,10 @@ pub async fn check_permissions<R: Runtime>(app_handle: tauri::AppHandle<R>, path
             Err(e) => {
                 // Show permission dialog
                 if let Some(window) = app_handle.get_window("main") {
-                    let error_msg = format!("Cannot access {}: {}. Would you like to grant access?", path_display, e);
+                    let error_msg = format!(
+                        "Cannot access {}: {}. Would you like to grant access?",
+                        path_display, e
+                    );
                     let path_clone = path_display.clone();
 
                     dialog::ask(
@@ -122,11 +129,10 @@ pub async fn check_permissions<R: Runtime>(app_handle: tauri::AppHandle<R>, path
                         move |answer| {
                             if answer {
                                 // Try to open the directory in Finder to trigger macOS permission dialog
-                                let _ = std::process::Command::new("open")
-                                    .arg(&path_clone)
-                                    .output();
+                                let _ =
+                                    std::process::Command::new("open").arg(&path_clone).output();
                             }
-                        }
+                        },
                     );
                 }
                 Err(format!("Permission denied: {}", e))

@@ -1,11 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -76,7 +76,7 @@ impl DiskScanner {
     pub fn get_error_stats(&self) -> (usize, usize) {
         (
             self.permission_errors.load(Ordering::Relaxed),
-            self.not_found_errors.load(Ordering::Relaxed)
+            self.not_found_errors.load(Ordering::Relaxed),
         )
     }
 
@@ -106,7 +106,9 @@ impl DiskScanner {
         println!("Cache build completed in {:?}", scan_duration);
 
         // Store in global cache
-        let cache_map: HashMap<String, DirectoryInfo> = self.cache.iter()
+        let cache_map: HashMap<String, DirectoryInfo> = self
+            .cache
+            .iter()
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect();
 
@@ -120,7 +122,8 @@ impl DiskScanner {
 
     fn scan_directory_for_cache(&mut self, path: &Path, depth: usize) -> Result<(), String> {
         let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
@@ -150,16 +153,19 @@ impl DiskScanner {
         Ok(())
     }
 
-    fn scan_directory_contents_for_cache(&mut self, path: &Path, dir_name: String, depth: usize) -> Result<(), String> {
+    fn scan_directory_contents_for_cache(
+        &mut self,
+        path: &Path,
+        dir_name: String,
+        depth: usize,
+    ) -> Result<(), String> {
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
             Err(_) => return Ok(()),
         };
 
         // Collect and filter entries
-        let mut entry_list: Vec<_> = entries
-            .filter_map(|entry| entry.ok())
-            .collect();
+        let mut entry_list: Vec<_> = entries.filter_map(|entry| entry.ok()).collect();
 
         // Sort by name
         entry_list.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
@@ -234,7 +240,8 @@ impl DiskScanner {
             children_names,
         };
 
-        self.cache.insert(path.to_string_lossy().to_string(), dir_info);
+        self.cache
+            .insert(path.to_string_lossy().to_string(), dir_info);
 
         Ok(())
     }
@@ -256,7 +263,8 @@ impl DiskScanner {
             return Err("Path is not a directory".to_string());
         }
 
-        let name = path_obj.file_name()
+        let name = path_obj
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
@@ -294,7 +302,10 @@ impl DiskScanner {
 
     // Get immediate children of a directory
     pub fn get_directory_children(&self, path: &str) -> Result<Vec<FileNode>, String> {
-        println!("=== [Backend] get_directory_children called for path: {}", path);
+        println!(
+            "=== [Backend] get_directory_children called for path: {}",
+            path
+        );
 
         let path = Path::new(path);
         if !path.exists() {
@@ -325,13 +336,22 @@ impl DiskScanner {
                     Ok(metadata) => {
                         if metadata.is_dir() {
                             // Try to get cached size, otherwise calculate
-                            let size = if let Some(cached_info) = self.cache.get(&entry_path.to_string_lossy().to_string()) {
-                                println!("=== [Backend] Found cached size for directory {}: {} bytes", name, cached_info.size);
+                            let size = if let Some(cached_info) =
+                                self.cache.get(&entry_path.to_string_lossy().to_string())
+                            {
+                                println!(
+                                    "=== [Backend] Found cached size for directory {}: {} bytes",
+                                    name, cached_info.size
+                                );
                                 cached_info.size
                             } else {
                                 println!("=== [Backend] Calculating size for directory: {}", name);
-                                let calculated_size = self.calculate_directory_size(&entry_path).unwrap_or(0);
-                                println!("=== [Backend] Calculated size for directory {}: {} bytes", name, calculated_size);
+                                let calculated_size =
+                                    self.calculate_directory_size(&entry_path).unwrap_or(0);
+                                println!(
+                                    "=== [Backend] Calculated size for directory {}: {} bytes",
+                                    name, calculated_size
+                                );
                                 calculated_size
                             };
 
@@ -346,7 +366,10 @@ impl DiskScanner {
                         } else {
                             let file_size = metadata.len();
                             if cfg!(debug_assertions) {
-                                println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                                println!(
+                                    "=== [Backend] Processing file {}: {} bytes",
+                                    name, file_size
+                                );
                             }
                             Some(FileNode {
                                 name,
@@ -369,7 +392,10 @@ impl DiskScanner {
             })
             .collect();
 
-        println!("=== [Backend] Found {} entries before filtering", children.len());
+        println!(
+            "=== [Backend] Found {} entries before filtering",
+            children.len()
+        );
 
         // Sort by size (largest first)
         children.sort_by(|a, b| b.size.cmp(&a.size));
@@ -378,7 +404,10 @@ impl DiskScanner {
         // is meant to return all immediate children regardless of size, unlike scan_directory
         // which is used for visualization and applies size filtering
 
-        println!("=== [Backend] Final result: {} items (no size filtering applied)", children.len());
+        println!(
+            "=== [Backend] Final result: {} items (no size filtering applied)",
+            children.len()
+        );
         Ok(children)
     }
 
@@ -402,15 +431,25 @@ impl DiskScanner {
                                         Ok(sub_size) => total_size += sub_size,
                                         Err(e) => {
                                             // 统计错误类型并静默处理
-                                            if e.contains("Permission denied") || e.contains("Operation not permitted") {
-                                                self.permission_errors.fetch_add(1, Ordering::Relaxed);
-                                            } else if e.contains("No such file") || e.contains("os error 2") {
-                                                self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                                            if e.contains("Permission denied")
+                                                || e.contains("Operation not permitted")
+                                            {
+                                                self.permission_errors
+                                                    .fetch_add(1, Ordering::Relaxed);
+                                            } else if e.contains("No such file")
+                                                || e.contains("os error 2")
+                                            {
+                                                self.not_found_errors
+                                                    .fetch_add(1, Ordering::Relaxed);
                                             }
 
                                             // 只在调试模式下显示
                                             if cfg!(debug_assertions) {
-                                                eprintln!("Debug: Failed to scan subdirectory {}: {}", entry_path.display(), e);
+                                                eprintln!(
+                                                    "Debug: Failed to scan subdirectory {}: {}",
+                                                    entry_path.display(),
+                                                    e
+                                                );
                                             }
                                         }
                                     }
@@ -421,15 +460,23 @@ impl DiskScanner {
                             }
                             Err(e) => {
                                 // 统计错误类型并静默处理
-                                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                                if e.to_string().contains("Permission denied")
+                                    || e.to_string().contains("Operation not permitted")
+                                {
                                     self.permission_errors.fetch_add(1, Ordering::Relaxed);
-                                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                                } else if e.to_string().contains("No such file")
+                                    || e.to_string().contains("os error 2")
+                                {
                                     self.not_found_errors.fetch_add(1, Ordering::Relaxed);
                                 }
 
                                 // 只在调试模式下显示
                                 if cfg!(debug_assertions) {
-                                    eprintln!("Debug: Failed to get metadata for {}: {}", entry_path.display(), e);
+                                    eprintln!(
+                                        "Debug: Failed to get metadata for {}: {}",
+                                        entry_path.display(),
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -437,7 +484,11 @@ impl DiskScanner {
                 }
             }
             Err(e) => {
-                return Err(format!("Failed to read directory {}: {}", path.display(), e));
+                return Err(format!(
+                    "Failed to read directory {}: {}",
+                    path.display(),
+                    e
+                ));
             }
         }
 
@@ -446,7 +497,11 @@ impl DiskScanner {
 
     // Get directory children with specified depth - returns nested structure
     // 重要：扫描所有深度以正确计算目录大小，但只返回指定深度的子项
-    pub fn get_directory_children_with_depth(&self, path: &str, max_depth: u32) -> Result<Vec<FileNode>, String> {
+    pub fn get_directory_children_with_depth(
+        &self,
+        path: &str,
+        max_depth: u32,
+    ) -> Result<Vec<FileNode>, String> {
         // 只在调试模式下显示详细日志
         if cfg!(debug_assertions) {
             println!("=== [Backend] get_directory_children_with_depth called for path: {}, max_depth: {}", path, max_depth);
@@ -461,15 +516,22 @@ impl DiskScanner {
         }
 
         if cfg!(debug_assertions) {
-            println!("=== [Backend] Reading directory with depth: {}", path.display());
+            println!(
+                "=== [Backend] Reading directory with depth: {}",
+                path.display()
+            );
         }
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
             Err(e) => {
                 // 统计错误类型并静默处理
-                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                if e.to_string().contains("Permission denied")
+                    || e.to_string().contains("Operation not permitted")
+                {
                     self.permission_errors.fetch_add(1, Ordering::Relaxed);
-                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                } else if e.to_string().contains("No such file")
+                    || e.to_string().contains("os error 2")
+                {
                     self.not_found_errors.fetch_add(1, Ordering::Relaxed);
                 }
 
@@ -607,7 +669,10 @@ impl DiskScanner {
         children.sort_by(|a, b| b.size.cmp(&a.size));
 
         if cfg!(debug_assertions) {
-            println!("=== [Backend] Final result with depth: {} items", children.len());
+            println!(
+                "=== [Backend] Final result with depth: {} items",
+                children.len()
+            );
         }
         Ok(children)
     }
@@ -656,7 +721,8 @@ impl DiskScanner {
 
         // 如果是符号链接，不计算其大小（特别是符号链接的文件夹）
         if symlink_metadata.file_type().is_symlink() {
-            let name = path.file_name()
+            let name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -664,7 +730,7 @@ impl DiskScanner {
             return Ok(FileNode {
                 name,
                 path: path.to_string_lossy().to_string(),
-                size: 0, // 符号链接不计算大小
+                size: 0,             // 符号链接不计算大小
                 is_directory: false, // 符号链接视为文件，不当作目录处理
                 children: vec![],
                 inode: None, // 符号链接不使用inode去重
@@ -673,7 +739,8 @@ impl DiskScanner {
 
         // 对于普通文件和目录，使用正常的metadata
         let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
@@ -713,14 +780,24 @@ impl DiskScanner {
         }
     }
 
-    fn scan_directory_node(&self, path: &Path, name: String, inode: Option<u64>, depth: usize) -> Result<FileNode, String> {
+    fn scan_directory_node(
+        &self,
+        path: &Path,
+        name: String,
+        inode: Option<u64>,
+        depth: usize,
+    ) -> Result<FileNode, String> {
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
             Err(e) => {
                 // 统计错误类型并静默处理
-                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                if e.to_string().contains("Permission denied")
+                    || e.to_string().contains("Operation not permitted")
+                {
                     self.permission_errors.fetch_add(1, Ordering::Relaxed);
-                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                } else if e.to_string().contains("No such file")
+                    || e.to_string().contains("os error 2")
+                {
                     self.not_found_errors.fetch_add(1, Ordering::Relaxed);
                 }
 
@@ -739,9 +816,7 @@ impl DiskScanner {
             }
         };
 
-        let mut entry_list: Vec<_> = entries
-            .filter_map(|entry| entry.ok())
-            .collect();
+        let mut entry_list: Vec<_> = entries.filter_map(|entry| entry.ok()).collect();
 
         entry_list.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
 
@@ -752,9 +827,7 @@ impl DiskScanner {
 
         let children: Vec<FileNode> = entry_list
             .par_iter()
-            .filter_map(|entry| {
-                self.scan_node(&entry.path(), depth + 1).ok()
-            })
+            .filter_map(|entry| self.scan_node(&entry.path(), depth + 1).ok())
             .collect();
 
         // 维护inode集合，对重复inode进行去重
@@ -820,7 +893,8 @@ impl DiskScanner {
         if node.is_directory {
             node.children.sort_by(|a, b| b.size.cmp(&a.size));
             const MIN_SIZE_THRESHOLD: u64 = 1024;
-            node.children.retain(|child| child.size >= MIN_SIZE_THRESHOLD || child.is_directory);
+            node.children
+                .retain(|child| child.size >= MIN_SIZE_THRESHOLD || child.is_directory);
             for child in &mut node.children {
                 self.sort_nodes_by_size(child);
             }
@@ -831,7 +905,10 @@ impl DiskScanner {
 // New Tauri commands for on-demand loading using rayon for parallel processing
 #[tauri::command]
 pub fn build_directory_cache(path: String, max_depth: Option<usize>) -> Result<String, String> {
-    println!("=== [Backend] Tauri command build_directory_cache called with path: {}, max_depth: {:?}", path, max_depth);
+    println!(
+        "=== [Backend] Tauri command build_directory_cache called with path: {}, max_depth: {:?}",
+        path, max_depth
+    );
 
     // Use rayon parallel processing
     let result = rayon::scope(|_s| {
@@ -862,7 +939,10 @@ pub fn build_directory_cache(path: String, max_depth: Option<usize>) -> Result<S
 
 #[tauri::command]
 pub fn get_directory_info(path: String) -> Result<DirectoryInfo, String> {
-    println!("=== [Backend] Tauri command get_directory_info called with path: {}", path);
+    println!(
+        "=== [Backend] Tauri command get_directory_info called with path: {}",
+        path
+    );
 
     // Try to get from global cache first
     println!("=== [Backend] Checking global cache for path: {}", path);
@@ -889,7 +969,10 @@ pub fn get_directory_info(path: String) -> Result<DirectoryInfo, String> {
 
 #[tauri::command]
 pub fn get_directory_children(path: String) -> Result<Vec<FileNode>, String> {
-    println!("=== [Backend] Tauri command get_directory_children called with path: {}", path);
+    println!(
+        "=== [Backend] Tauri command get_directory_children called with path: {}",
+        path
+    );
 
     // Use rayon for parallel processing
     let result = rayon::scope(|_s| {
@@ -898,14 +981,20 @@ pub fn get_directory_children(path: String) -> Result<Vec<FileNode>, String> {
     });
 
     match &result {
-        Ok(children) => println!("=== [Backend] Successfully returning {} children", children.len()),
+        Ok(children) => println!(
+            "=== [Backend] Successfully returning {} children",
+            children.len()
+        ),
         Err(e) => println!("=== [Backend] Error in get_directory_children: {}", e),
     }
     result
 }
 
 #[tauri::command]
-pub fn get_directory_children_with_depth(path: String, max_depth: u32) -> Result<Vec<FileNode>, String> {
+pub fn get_directory_children_with_depth(
+    path: String,
+    max_depth: u32,
+) -> Result<Vec<FileNode>, String> {
     println!("=== [Backend] Tauri command get_directory_children_with_depth called with path: {}, max_depth: {}", path, max_depth);
 
     // Use rayon for parallel processing
@@ -923,8 +1012,15 @@ pub fn get_directory_children_with_depth(path: String, max_depth: u32) -> Result
     });
 
     match &result {
-        Ok(children) => println!("=== [Backend] Successfully returning {} children with depth {}", children.len(), max_depth),
-        Err(e) => println!("=== [Backend] Error in get_directory_children_with_depth: {}", e),
+        Ok(children) => println!(
+            "=== [Backend] Successfully returning {} children with depth {}",
+            children.len(),
+            max_depth
+        ),
+        Err(e) => println!(
+            "=== [Backend] Error in get_directory_children_with_depth: {}",
+            e
+        ),
     }
     result
 }
@@ -967,7 +1063,8 @@ mod tests {
         let mut file2 = File::create(root.join("subdir1").join("file2.txt")).unwrap();
         file2.write_all(large_content.as_bytes()).unwrap();
 
-        let mut file3 = File::create(root.join("subdir1").join("nested").join("file3.txt")).unwrap();
+        let mut file3 =
+            File::create(root.join("subdir1").join("nested").join("file3.txt")).unwrap();
         file3.write_all(large_content.as_bytes()).unwrap();
 
         // Create large file in root
@@ -1038,7 +1135,10 @@ mod tests {
         assert!(result.is_ok());
 
         let dir_info = result.unwrap();
-        assert_eq!(dir_info.name, temp_dir.path().file_name().unwrap().to_str().unwrap());
+        assert_eq!(
+            dir_info.name,
+            temp_dir.path().file_name().unwrap().to_str().unwrap()
+        );
         assert_eq!(dir_info.path, temp_dir.path().to_string_lossy().to_string());
         assert!(dir_info.is_directory);
         // Children count includes all items, regardless of size filtering
@@ -1058,8 +1158,12 @@ mod tests {
         assert!(children.len() >= 4); // At least 4 direct children
 
         // Check that we have both files and directories
-        let has_file = children.iter().any(|child| !child.is_directory && child.name == "file1.txt");
-        let has_dir = children.iter().any(|child| child.is_directory && child.name == "subdir1");
+        let has_file = children
+            .iter()
+            .any(|child| !child.is_directory && child.name == "file1.txt");
+        let has_dir = children
+            .iter()
+            .any(|child| child.is_directory && child.name == "subdir1");
 
         assert!(has_file);
         assert!(has_dir);
@@ -1138,7 +1242,7 @@ mod tests {
         // Verify that children are sorted by size (largest first)
         let children = &scan_result.root.children;
         for i in 1..children.len() {
-            assert!(children[i-1].size >= children[i].size);
+            assert!(children[i - 1].size >= children[i].size);
         }
     }
 
@@ -1445,7 +1549,10 @@ pub fn get_error_stats() -> Result<(usize, usize), String> {
     let scanner = DiskScanner::new();
     let (permission_errors, not_found_errors) = scanner.get_error_stats();
 
-    println!("=== [Backend] Error stats - Permission errors: {}, Not found errors: {}", permission_errors, not_found_errors);
+    println!(
+        "=== [Backend] Error stats - Permission errors: {}, Not found errors: {}",
+        permission_errors, not_found_errors
+    );
     Ok((permission_errors, not_found_errors))
 }
 
