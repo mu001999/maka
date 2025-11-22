@@ -373,6 +373,101 @@ impl DiskScanner {
         Ok(children)
     }
 
+    // Get directory children with specified depth - returns nested structure
+    pub fn get_directory_children_with_depth(&self, path: &str, max_depth: u32) -> Result<Vec<FileNode>, String> {
+        println!("=== [Backend] get_directory_children_with_depth called for path: {}, max_depth: {}", path, max_depth);
+
+        let path = Path::new(path);
+        if !path.exists() {
+            println!("=== [Backend] Path does not exist: {}", path.display());
+            return Err("Path does not exist".to_string());
+        }
+
+        println!("=== [Backend] Reading directory with depth: {}", path.display());
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(e) => {
+                println!("=== [Backend] Failed to read directory: {}", e);
+                return Err(e.to_string());
+            }
+        };
+
+        // Use rayon for parallel processing of directory entries
+        let mut children: Vec<FileNode> = entries
+            .par_bridge() // Convert to parallel iterator
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                let should_include = !name_str.starts_with('.') &&
+                !matches!(name_str.as_ref(), "proc" | "sys" | "dev" | "run" | "tmp");
+
+                if !should_include {
+                    println!("=== [Backend] Filtering out hidden/system directory: {}", name_str);
+                }
+                should_include
+            })
+            .filter_map(|entry| {
+                let entry_path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+
+                println!("=== [Backend] Processing entry with depth: {}", name);
+
+                match fs::metadata(&entry_path) {
+                    Ok(metadata) => {
+                        if metadata.is_dir() && max_depth > 0 {
+                            // For directories, recursively get children if depth > 0
+                            let children = match self.get_directory_children_with_depth(
+                                &entry_path.to_string_lossy().to_string(),
+                                max_depth - 1
+                            ) {
+                                Ok(sub_children) => sub_children,
+                                Err(e) => {
+                                    println!("=== [Backend] Failed to get children for {}: {}", name, e);
+                                    vec![]
+                                }
+                            };
+
+                            let total_size = children.iter().map(|child| child.size).sum::<u64>();
+
+                            Some(FileNode {
+                                name,
+                                path: entry_path.to_string_lossy().to_string(),
+                                size: total_size,
+                                is_directory: true,
+                                children, // Populate children recursively
+                                inode: self.get_inode(&metadata),
+                            })
+                        } else {
+                            let file_size = metadata.len();
+                            println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                            Some(FileNode {
+                                name,
+                                path: entry_path.to_string_lossy().to_string(),
+                                size: file_size,
+                                is_directory: false,
+                                children: vec![],
+                                inode: self.get_inode(&metadata),
+                            })
+                        }
+                    }
+                    Err(e) => {
+                        println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
+                        None
+                    }
+                }
+            })
+            .collect();
+
+        println!("=== [Backend] Found {} entries with depth", children.len());
+
+        // Sort by size (largest first)
+        children.sort_by(|a, b| b.size.cmp(&a.size));
+
+        println!("=== [Backend] Final result with depth: {} items", children.len());
+        Ok(children)
+    }
+
     fn calculate_directory_size(&self, path: &Path) -> Result<u64, String> {
         if let Some(cached_info) = self.cache.get(&path.to_string_lossy().to_string()) {
             return Ok(cached_info.size);
@@ -623,6 +718,23 @@ pub fn get_directory_children(path: String) -> Result<Vec<FileNode>, String> {
     match &result {
         Ok(children) => println!("=== [Backend] Successfully returning {} children", children.len()),
         Err(e) => println!("=== [Backend] Error in get_directory_children: {}", e),
+    }
+    result
+}
+
+#[tauri::command]
+pub fn get_directory_children_with_depth(path: String, max_depth: u32) -> Result<Vec<FileNode>, String> {
+    println!("=== [Backend] Tauri command get_directory_children_with_depth called with path: {}, max_depth: {}", path, max_depth);
+
+    // Use rayon for parallel processing
+    let result = rayon::scope(|_s| {
+        let scanner = DiskScanner::with_max_depth(max_depth as usize);
+        scanner.get_directory_children_with_depth(&path, max_depth)
+    });
+
+    match &result {
+        Ok(children) => println!("=== [Backend] Successfully returning {} children with depth {}", children.len(), max_depth),
+        Err(e) => println!("=== [Backend] Error in get_directory_children_with_depth: {}", e),
     }
     result
 }

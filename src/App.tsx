@@ -68,6 +68,79 @@ async function invoke<T>(cmd: string, args?: any): Promise<T> {
       ]
       console.log('=== [Frontend] Returning mock data with', mockData.length, 'items')
       return mockData as T
+    } else if (cmd === 'get_directory_children_with_depth') {
+      console.log('=== [Frontend] Using MOCK data for get_directory_children_with_depth')
+      // Return mock data for development with nested structure
+      const mockData = [
+        {
+          name: 'Applications',
+          path: '/Applications',
+          size: 17040439975,
+          is_directory: true,
+          children: [
+            {
+              name: 'Safari.app',
+              path: '/Applications/Safari.app',
+              size: 100000000,
+              is_directory: true,
+              children: [],
+              children_count: 0
+            },
+            {
+              name: 'Chrome.app',
+              path: '/Applications/Chrome.app',
+              size: 200000000,
+              is_directory: true,
+              children: [],
+              children_count: 0
+            }
+          ],
+          children_count: 2
+        },
+        {
+          name: 'Users',
+          path: '/Users',
+          size: 1521820080,
+          is_directory: true,
+          children: [
+            {
+              name: 'Shared',
+              path: '/Users/Shared',
+              size: 500000000,
+              is_directory: true,
+              children: [],
+              children_count: 0
+            }
+          ],
+          children_count: 1
+        },
+        {
+          name: 'System',
+          path: '/System',
+          size: 3118219,
+          is_directory: true,
+          children: [],
+          children_count: 0
+        },
+        {
+          name: 'Library',
+          path: '/Library',
+          size: 19077179226,
+          is_directory: true,
+          children: [],
+          children_count: 0
+        },
+        {
+          name: 'var',
+          path: '/var',
+          size: 6777037613,
+          is_directory: true,
+          children: [],
+          children_count: 0
+        }
+      ]
+      console.log('=== [Frontend] Returning mock data with depth for', mockData.length, 'items')
+      return mockData as T
     } else if (cmd === 'request_disk_access') {
       console.log('=== [Frontend] Using fallback for request_disk_access')
       return '/' as T
@@ -137,8 +210,11 @@ function App() {
     setError(null)
 
     try {
-      console.log('=== [Frontend] Calling get_directory_children with path:', path)
-      const children = await invoke<FileNode[]>('get_directory_children', { path })
+      console.log('=== [Frontend] Calling get_directory_children_with_depth with path:', path)
+      const children = await invoke<FileNode[]>('get_directory_children_with_depth', {
+        path,
+        max_depth: 2
+      })
       console.log('=== [Frontend] Received children from backend:', children)
       console.log('=== [Frontend] Children count:', children?.length || 0)
       console.log('=== [Frontend] First child sample:', children?.[0])
@@ -181,6 +257,32 @@ function App() {
     }
   }, [])
 
+  const loadDirectoryChildrenWithDepth = useCallback(async (path: string, depth: number = 2) => {
+    console.log('=== [Frontend] Loading children with depth for path:', path, 'depth:', depth)
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      // 使用新的API一次性获取指定深度的完整数据结构
+      const children = await invoke<FileNode[]>('get_directory_children_with_depth', {
+        path,
+        max_depth: depth
+      })
+
+      setCurrentData(children as FileNode[])
+      setCurrentPath(path)
+      setError(null)
+    } catch (err) {
+      console.error('=== [Frontend] Failed to load directory children with depth:', err)
+      setError(`Failed to load directory children with depth: ${err}`)
+      setCurrentData([])
+      setCurrentPath(path)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   // Get directory info - 暂时注释掉未使用的函数
   // const getDirectoryInfo = useCallback(async (path: string) => {
   //   console.log('=== [Frontend] Getting directory info for path:', path)
@@ -206,9 +308,9 @@ function App() {
         // Build cache for the selected directory
         console.log('=== [Frontend] Building cache for selected directory...')
         await buildCache(selected)
-        // Load root directory children
-        console.log('=== [Frontend] Loading root directory children...')
-        await loadDirectoryChildren(selected)
+        // Load root directory children with depth
+        console.log('=== [Frontend] Loading root directory children with depth...')
+        await loadDirectoryChildrenWithDepth(selected, 2)
       }
     } catch (err) {
       console.error('=== [Frontend] Failed to select directory:', err)
@@ -225,11 +327,11 @@ function App() {
         size: node.size,
         children_count: node.children_count
       })
-      await loadDirectoryChildren(node.path)
+      await loadDirectoryChildrenWithDepth(node.path, 2)
     } else {
       console.log('=== [Frontend] Clicked on file (no action):', node.name, 'size:', node.size)
     }
-  }, [loadDirectoryChildren])
+  }, [loadDirectoryChildrenWithDepth])
 
   // Handle back navigation
   const handleGoBack = async () => {
@@ -242,7 +344,7 @@ function App() {
     const actualParentPath = parentPath === '' ? '/' : parentPath
 
     if (actualParentPath.startsWith(selectedPath) || actualParentPath === '/') {
-      await loadDirectoryChildren(actualParentPath)
+      await loadDirectoryChildrenWithDepth(actualParentPath, 2)
     }
   }
 
@@ -252,13 +354,13 @@ function App() {
     if (currentPath && selectedPath) {
       console.log('=== [Frontend] Manual refresh triggered')
       console.log('=== [Frontend] Refreshing path:', currentPath)
-      await loadDirectoryChildren(currentPath)
+      await loadDirectoryChildrenWithDepth(currentPath, 2)
     } else {
       console.log('=== [Frontend] Refresh skipped - missing path:', { currentPath, selectedPath })
       // Try to refresh with current path even if selectedPath is missing
       if (currentPath) {
         console.log('=== [Frontend] Trying refresh with currentPath only:', currentPath)
-        await loadDirectoryChildren(currentPath)
+        await loadDirectoryChildrenWithDepth(currentPath, 2)
       }
     }
   }
@@ -303,7 +405,7 @@ function App() {
 
           // Load root directory
           console.log('=== [Frontend] Loading root directory...')
-          await loadDirectoryChildren(rootPath)
+          await loadDirectoryChildrenWithDepth(rootPath, 2)
         } else {
           console.error('=== [Frontend] No system drives found')
           setError('No system drives found')
@@ -327,20 +429,10 @@ function App() {
     }
   }, []);
 
-  // 添加调试信息
-  console.log('=== [Frontend] App component loaded at:', new Date().toLocaleTimeString());
-  console.log('=== [Frontend] Current data length:', currentData.length);
-
   return (
     <div className="app">
       <header className="app-header">
         <h1>Maka - Disk Usage Analyzer</h1>
-        <div style={{background: 'red', color: 'white', padding: '5px', margin: '5px', fontSize: '20px', fontWeight: 'bold'}}>
-          FRONTEND LOADED: {new Date().toLocaleTimeString()}
-        </div>
-        <div style={{background: 'blue', color: 'white', padding: '5px', margin: '5px', fontSize: '20px', fontWeight: 'bold'}}>
-          DATA LENGTH: {currentData.length}
-        </div>
         <div className="controls">
           <button onClick={handleDirectorySelect} disabled={loading}>
             {loading ? 'Scanning...' : 'Select Directory'}
@@ -399,42 +491,12 @@ function App() {
           </div>
         )}
 
-        {/* Debug info */}
-        <div className="debug-info" style={{background: '#f0f0f0', padding: '10px', margin: '10px', border: '1px solid #ccc'}}>
-          <strong>Debug Info:</strong>
-          <br />Loading: {loading.toString()}
-          <br />Cache Built: {cacheBuilt.toString()}
-          <br />Current Path: {currentPath}
-          <br />Data Length: {currentData.length}
-          <br />Selected Path: {selectedPath}
-          <br />First Item: {currentData.length > 0 ? currentData[0].name : 'None'}
-          <br />Error: {error || 'None'}
-        </div>
-
         {!loading && (
           <>
             <div className="current-path">
               <strong>Current Path:</strong> {currentPath}
               <br />
               <strong>Items:</strong> {currentData.length}
-              <br />
-              <strong>Data preview:</strong> {currentData.length > 0 ? currentData[0].name : 'No data'}
-            </div>
-
-            {/* Simple data list for debugging */}
-            <div className="data-list" style={{margin: '20px', padding: '10px', border: '1px solid #ddd'}}>
-              <h3>Data List (Debug):</h3>
-              {currentData.length > 0 ? (
-                <ul>
-                  {currentData.map((item, index) => (
-                    <li key={index}>
-                      <strong>{item.name}</strong> - {item.size} bytes - {item.is_directory ? 'Directory' : 'File'}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No data available</p>
-              )}
             </div>
 
             {currentData.length > 0 ? (

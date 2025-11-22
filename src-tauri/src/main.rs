@@ -6,7 +6,10 @@
 mod disk_scanner;
 mod permissions;
 
-use disk_scanner::{scan_directory, get_system_drives, build_directory_cache, get_directory_info, get_directory_children};
+#[cfg(test)]
+mod disk_scanner_tests;
+
+use disk_scanner::{scan_directory, get_system_drives, build_directory_cache, get_directory_info, get_directory_children, get_directory_children_with_depth};
 use permissions::{request_disk_access, check_permissions};
 
 fn main() {
@@ -18,7 +21,8 @@ fn main() {
             check_permissions,
             build_directory_cache,
             get_directory_info,
-            get_directory_children
+            get_directory_children,
+            get_directory_children_with_depth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
