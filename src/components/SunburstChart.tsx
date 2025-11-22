@@ -18,9 +18,10 @@ interface SunburstChartProps {
   height?: number;
 }
 
-const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width = 600, height = 600 }) => {
+const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width, height }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const formatSize = (bytes: number): string => {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -40,17 +41,26 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width 
   useEffect(() => {
     if (!svgRef.current || !data || data.length === 0) return;
 
+    // Get container dimensions for fixed size
+    const container = svgRef.current.parentElement;
+    const containerWidth = container?.clientWidth || 600;
+    const containerHeight = container?.clientHeight || 600;
+    const chartWidth = width || Math.min(containerWidth, containerHeight);
+    const chartHeight = height || Math.min(containerWidth, containerHeight);
+
     const renderChart = () => {
       const svg = d3.select(svgRef.current);
       svg.selectAll('*').remove();
 
-      const radius = Math.min(width, height) / 2;
+      // Use the smaller dimension to ensure the chart fits
+      const size = Math.min(chartWidth, chartHeight);
+      const radius = size / 2 - 20; // Add some padding
 
-      svg.attr('width', width).attr('height', height);
+      svg.attr('width', size).attr('height', size);
 
       const g = svg
         .append('g')
-        .attr('transform', `translate(${width / 2},${height / 2})`);
+        .attr('transform', `translate(${size / 2},${size / 2})`);
 
       const partition = d3.partition<FileNode>()
         .size([2 * Math.PI, radius]);
@@ -64,9 +74,16 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width 
         children: data
       };
 
-      const root = d3.hierarchy(virtualRoot)
-        .sum(d => d.size)  // Include both files and directories in size calculation
-        .sort((a, b) => (b.value || 0) - (a.value || 0));
+      // Create hierarchy and manually set values to use pre-calculated sizes from backend
+      const root = d3.hierarchy(virtualRoot);
+
+      // Manually set values using pre-calculated sizes from backend
+      root.each(d => {
+        d.value = d.data.size; // Use the pre-calculated size from backend
+      });
+
+      // Sort by value
+      root.sort((a, b) => (b.value || 0) - (a.value || 0));
 
       partition(root);
 
@@ -137,22 +154,8 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width 
   }, [data]);
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <svg ref={svgRef} style={{ flex: 1 }} className="sunburst-chart"></svg>
-      {selectedNode && (
-        <div className="file-info">
-          <h4>Selected: {selectedNode.name}</h4>
-          <p>Path: {selectedNode.path}</p>
-          <p>Size: {formatSize(selectedNode.size)}</p>
-          <p>Type: {selectedNode.is_directory ? 'Directory' : 'File'}</p>
-          {selectedNode.is_directory && (
-            <p>Children: {selectedNode.children.length}</p>
-          )}
-        </div>
-      )}
-      <div className="chart-info">
-        <p>Data nodes: {data.length}</p>
-      </div>
+    <div ref={containerRef} className="sunburst-chart">
+      <svg ref={svgRef} className="sunburst-chart-svg"></svg>
     </div>
   );
 };

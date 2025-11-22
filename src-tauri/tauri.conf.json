@@ -51,11 +51,14 @@
       {
         "fullscreen": false,
         "height": 800,
-        "resizable": true,
-        "title": "Maka - Disk Usage Analyzer",
+        "resizable": false,
+        "title": "Maka",
         "width": 1200,
-        "minWidth": 800,
-        "minHeight": 600
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "center": true
       }
     ]
   }

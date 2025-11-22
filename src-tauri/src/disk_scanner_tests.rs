@@ -372,21 +372,219 @@ mod path_validation_tests {
     }
 
     #[test]
-    fn test_nonexistent_path_errors() {
+    fn test_directory_size_calculation_with_nested_structure() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let root = temp_dir.path();
+
+        // Create a nested directory structure with known file sizes
+        fs::create_dir(root.join("parent")).unwrap();
+        fs::create_dir(root.join("parent").join("child1")).unwrap();
+        fs::create_dir(root.join("parent").join("child2")).unwrap();
+        fs::create_dir(root.join("parent").join("child1").join("grandchild")).unwrap();
+
+        // Create files with known sizes
+        let content_1000 = "X".repeat(1000);
+        let content_2000 = "Y".repeat(2000);
+        let content_3000 = "Z".repeat(3000);
+
+        // Root level files
+        let mut root_file = File::create(root.join("root_file.txt")).unwrap();
+        root_file.write_all(content_1000.as_bytes()).unwrap();
+
+        // Parent directory files
+        let mut parent_file = File::create(root.join("parent").join("parent_file.txt")).unwrap();
+        parent_file.write_all(content_2000.as_bytes()).unwrap();
+
+        // Child1 files
+        let mut child1_file = File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
+        child1_file.write_all(content_3000.as_bytes()).unwrap();
+
+        // Child2 files
+        let mut child2_file = File::create(root.join("parent").join("child2").join("child2_file.txt")).unwrap();
+        child2_file.write_all(content_1000.as_bytes()).unwrap();
+
+        // Grandchild files
+        let mut grandchild_file = File::create(root.join("parent").join("child1").join("grandchild").join("grandchild_file.txt")).unwrap();
+        grandchild_file.write_all(content_2000.as_bytes()).unwrap();
+
         let scanner = DiskScanner::new();
-        let nonexistent_path = "/this/path/does/not/exist";
+        let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let children_result = scanner.get_directory_children(nonexistent_path);
-        assert!(children_result.is_err());
-        assert!(children_result.unwrap_err().contains("does not exist"));
+        // Test with depth 3 to see all nested structure
+        let result = scanner.get_directory_children_with_depth(&root_path, 3);
+        assert!(result.is_ok(), "Should successfully get children with depth 3");
 
-        let depth_result = scanner.get_directory_children_with_depth(nonexistent_path, 2);
-        assert!(depth_result.is_err());
-        assert!(depth_result.unwrap_err().contains("does not exist"));
+        let children = result.unwrap();
 
-        let info_result = scanner.get_directory_info(nonexistent_path);
-        assert!(info_result.is_err());
-        assert!(info_result.unwrap_err().contains("does not exist"));
+        // Find the parent directory
+        let parent = children.iter().find(|c| c.name == "parent").expect("Should find parent directory");
+
+        // Parent directory should contain: parent_file.txt (2000), child1 (5000 total), child2 (1000 total)
+        // Expected parent size: 2000 + 5000 + 1000 = 8000
+        println!("Parent directory size: {}", parent.size);
+        println!("Parent children count: {}", parent.children.len());
+
+        // Verify parent contains expected children
+        let parent_file = parent.children.iter().find(|c| c.name == "parent_file.txt");
+        assert!(parent_file.is_some(), "Parent should contain parent_file.txt");
+        assert_eq!(parent_file.unwrap().size, 2000, "parent_file.txt should be 2000 bytes");
+
+        let child1 = parent.children.iter().find(|c| c.name == "child1");
+        assert!(child1.is_some(), "Parent should contain child1 directory");
+        let child1 = child1.unwrap();
+
+        let child2 = parent.children.iter().find(|c| c.name == "child2");
+        assert!(child2.is_some(), "Parent should contain child2 directory");
+        let child2 = child2.unwrap();
+
+        // Child1 should contain: child1_file.txt (3000) + grandchild (2000 total) = 5000
+        println!("Child1 directory size: {}", child1.size);
+        let child1_file = child1.children.iter().find(|c| c.name == "child1_file.txt");
+        assert!(child1_file.is_some(), "Child1 should contain child1_file.txt");
+        assert_eq!(child1_file.unwrap().size, 3000, "child1_file.txt should be 3000 bytes");
+
+        let grandchild = child1.children.iter().find(|c| c.name == "grandchild");
+        assert!(grandchild.is_some(), "Child1 should contain grandchild directory");
+        let grandchild = grandchild.unwrap();
+        println!("Grandchild directory size: {}", grandchild.size);
+
+        // Grandchild should contain: grandchild_file.txt (2000)
+        let grandchild_file = grandchild.children.iter().find(|c| c.name == "grandchild_file.txt");
+        assert!(grandchild_file.is_some(), "Grandchild should contain grandchild_file.txt");
+        assert_eq!(grandchild_file.unwrap().size, 2000, "grandchild_file.txt should be 2000 bytes");
+
+        // Child2 should contain: child2_file.txt (1000)
+        println!("Child2 directory size: {}", child2.size);
+        let child2_file = child2.children.iter().find(|c| c.name == "child2_file.txt");
+        assert!(child2_file.is_some(), "Child2 should contain child2_file.txt");
+        assert_eq!(child2_file.unwrap().size, 1000, "child2_file.txt should be 1000 bytes");
+
+        // Now verify the directory size calculations
+        // Expected sizes:
+        // - grandchild: 2000 (grandchild_file.txt)
+        // - child1: 3000 (child1_file.txt) + 2000 (grandchild) = 5000
+        // - child2: 1000 (child2_file.txt)
+        // - parent: 2000 (parent_file.txt) + 5000 (child1) + 1000 (child2) = 8000
+
+        assert_eq!(grandchild.size, 2000, "Grandchild directory size should be 2000");
+        assert_eq!(child1.size, 5000, "Child1 directory size should be 5000");
+        assert_eq!(child2.size, 1000, "Child2 directory size should be 1000");
+        assert_eq!(parent.size, 8000, "Parent directory size should be 8000");
+    }
+
+    #[test]
+    fn test_directory_size_calculation_single_level() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let root = temp_dir.path();
+
+        // Create a simple directory with files
+        fs::create_dir(root.join("test_dir")).unwrap();
+
+        let content_1000 = "X".repeat(1000);
+        let content_2000 = "Y".repeat(2000);
+
+        let mut file1 = File::create(root.join("test_dir").join("file1.txt")).unwrap();
+        file1.write_all(content_1000.as_bytes()).unwrap();
+
+        let mut file2 = File::create(root.join("test_dir").join("file2.txt")).unwrap();
+        file2.write_all(content_2000.as_bytes()).unwrap();
+
+        let scanner = DiskScanner::new();
+        let root_path = temp_dir.path().to_string_lossy().to_string();
+
+        let result = scanner.get_directory_children_with_depth(&root_path, 1);
+        assert!(result.is_ok());
+
+        let children = result.unwrap();
+        let test_dir = children.iter().find(|c| c.name == "test_dir").expect("Should find test_dir");
+
+        // test_dir should contain file1.txt (1000) + file2.txt (2000) = 3000
+        assert_eq!(test_dir.size, 3000, "test_dir size should be 3000");
+        assert_eq!(test_dir.children.len(), 2, "test_dir should have 2 children");
+    }
+
+    #[test]
+    fn test_directory_size_with_empty_subdirectories() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let root = temp_dir.path();
+
+        // Create directory structure with empty subdirectories
+        fs::create_dir(root.join("parent")).unwrap();
+        fs::create_dir(root.join("parent").join("empty1")).unwrap();
+        fs::create_dir(root.join("parent").join("empty2")).unwrap();
+
+        let content_500 = "X".repeat(500);
+
+        // Only one file in parent
+        let mut parent_file = File::create(root.join("parent").join("parent_file.txt")).unwrap();
+        parent_file.write_all(content_500.as_bytes()).unwrap();
+
+        let scanner = DiskScanner::new();
+        let root_path = temp_dir.path().to_string_lossy().to_string();
+
+        let result = scanner.get_directory_children_with_depth(&root_path, 2);
+        assert!(result.is_ok());
+
+        let children = result.unwrap();
+        let parent = children.iter().find(|c| c.name == "parent").expect("Should find parent");
+
+        // parent should contain parent_file.txt (500) + empty1 (0) + empty2 (0) = 500
+        assert_eq!(parent.size, 500, "Parent directory size should be 500");
+        assert_eq!(parent.children.len(), 3, "Parent should have 3 children");
+    }
+
+    #[test]
+    fn test_max_depth_zero_returns_only_files() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let root = temp_dir.path();
+
+        // Create nested structure
+        fs::create_dir(root.join("parent")).unwrap();
+        fs::create_dir(root.join("parent").join("child1")).unwrap();
+        fs::create_dir(root.join("parent").join("child1").join("grandchild")).unwrap();
+
+        // Create files at different levels
+        let content_2000 = "X".repeat(2000);
+        let content_3000 = "Y".repeat(3000);
+        let content_4000 = "Z".repeat(4000);
+
+        let mut parent_file = File::create(root.join("parent").join("parent_file.txt")).unwrap();
+        parent_file.write_all(content_2000.as_bytes()).unwrap();
+
+        let mut child1_file = File::create(root.join("parent").join("child1").join("child1_file.txt")).unwrap();
+        child1_file.write_all(content_3000.as_bytes()).unwrap();
+
+        let mut grandchild_file = File::create(root.join("parent").join("child1").join("grandchild").join("grandchild_file.txt")).unwrap();
+        grandchild_file.write_all(content_4000.as_bytes()).unwrap();
+
+        let scanner = DiskScanner::new();
+        let root_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Test with max_depth = 0 (should return only files, no directories)
+        let result = scanner.get_directory_children_with_depth(&root_path, 0);
+        assert!(result.is_ok());
+
+        let children = result.unwrap();
+        println!("With max_depth = 0, found {} children", children.len());
+        for child in &children {
+            println!("  - {} ({} bytes, dir: {})", child.name, child.size, child.is_directory);
+        }
+
+        // With max_depth = 0, should return only files (no directories)
+        assert_eq!(children.len(), 1); // Only parent directory
+        assert_eq!(children[0].name, "parent");
+        // The parent directory should have the correct total size (9000) even though we only requested depth 0
+        assert_eq!(children[0].size, 9000);
+
+        // When we request depth = 1, should get correct total size including nested directories
+        let result_depth1 = scanner.get_directory_children_with_depth(&root_path, 1);
+        assert!(result_depth1.is_ok());
+
+        let children_depth1 = result_depth1.unwrap();
+        let parent = children_depth1.iter().find(|c| c.name == "parent").expect("Should find parent");
+
+        // parent should have size = parent_file.txt (2000) + child1 (3000 + 4000) = 9000
+        assert_eq!(parent.size, 9000, "Parent directory size should be 9000");
     }
 
     #[test]

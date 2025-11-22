@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Instant;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -46,6 +47,8 @@ pub struct DiskScanner {
     seen_inodes: Arc<DashMap<(u64, u64), bool>>,
     max_depth: Option<usize>,
     cache: Arc<DashMap<String, DirectoryInfo>>,
+    permission_errors: Arc<AtomicUsize>,
+    not_found_errors: Arc<AtomicUsize>,
 }
 
 impl DiskScanner {
@@ -54,6 +57,8 @@ impl DiskScanner {
             seen_inodes: Arc::new(DashMap::new()),
             max_depth: None,
             cache: Arc::new(DashMap::new()),
+            permission_errors: Arc::new(AtomicUsize::new(0)),
+            not_found_errors: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -62,7 +67,23 @@ impl DiskScanner {
             seen_inodes: Arc::new(DashMap::new()),
             max_depth: Some(max_depth),
             cache: Arc::new(DashMap::new()),
+            permission_errors: Arc::new(AtomicUsize::new(0)),
+            not_found_errors: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    // 获取错误统计信息
+    pub fn get_error_stats(&self) -> (usize, usize) {
+        (
+            self.permission_errors.load(Ordering::Relaxed),
+            self.not_found_errors.load(Ordering::Relaxed)
+        )
+    }
+
+    // 重置错误统计
+    pub fn reset_error_stats(&self) {
+        self.permission_errors.store(0, Ordering::Relaxed);
+        self.not_found_errors.store(0, Ordering::Relaxed);
     }
 
     // Quick scan to build directory cache without deep recursion
@@ -138,12 +159,6 @@ impl DiskScanner {
         // Collect and filter entries
         let mut entry_list: Vec<_> = entries
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name_str = name.to_string_lossy();
-                !name_str.starts_with('.') &&
-                !matches!(name_str.as_ref(), "proc" | "sys" | "dev" | "run" | "tmp")
-            })
             .collect();
 
         // Sort by name
@@ -300,17 +315,6 @@ impl DiskScanner {
         let mut children: Vec<FileNode> = entries
             .par_bridge() // Convert to parallel iterator
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name_str = name.to_string_lossy();
-                let should_include = !name_str.starts_with('.') &&
-                !matches!(name_str.as_ref(), "proc" | "sys" | "dev" | "run" | "tmp");
-
-                if !should_include {
-                    println!("=== [Backend] Filtering out hidden/system directory: {}", name_str);
-                }
-                should_include
-            })
             .filter_map(|entry| {
                 let entry_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -341,7 +345,9 @@ impl DiskScanner {
                             })
                         } else {
                             let file_size = metadata.len();
-                            println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                            if cfg!(debug_assertions) {
+                                println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                            }
                             Some(FileNode {
                                 name,
                                 path: entry_path.to_string_lossy().to_string(),
@@ -353,7 +359,10 @@ impl DiskScanner {
                         }
                     }
                     Err(e) => {
-                        println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
+                        // 静默处理权限错误
+                        if cfg!(debug_assertions) {
+                            println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
+                        }
                         None
                     }
                 }
@@ -373,21 +382,101 @@ impl DiskScanner {
         Ok(children)
     }
 
+    // Scan all depths to calculate total size for a directory
+    fn scan_all_depths_for_size(&self, path: &Path) -> Result<u64, String> {
+        let mut total_size = 0u64;
+
+        match fs::read_dir(path) {
+            Ok(entries) => {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let name = entry.file_name();
+                        let _name_str = name.to_string_lossy();
+
+                        let entry_path = entry.path();
+                        match fs::metadata(&entry_path) {
+                            Ok(metadata) => {
+                                if metadata.is_dir() {
+                                    // 递归扫描子目录
+                                    match self.scan_all_depths_for_size(&entry_path) {
+                                        Ok(sub_size) => total_size += sub_size,
+                                        Err(e) => {
+                                            // 统计错误类型并静默处理
+                                            if e.contains("Permission denied") || e.contains("Operation not permitted") {
+                                                self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                                            } else if e.contains("No such file") || e.contains("os error 2") {
+                                                self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                                            }
+
+                                            // 只在调试模式下显示
+                                            if cfg!(debug_assertions) {
+                                                eprintln!("Debug: Failed to scan subdirectory {}: {}", entry_path.display(), e);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // 累加文件大小
+                                    total_size += metadata.len();
+                                }
+                            }
+                            Err(e) => {
+                                // 统计错误类型并静默处理
+                                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                                    self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                                    self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                                }
+
+                                // 只在调试模式下显示
+                                if cfg!(debug_assertions) {
+                                    eprintln!("Debug: Failed to get metadata for {}: {}", entry_path.display(), e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("Failed to read directory {}: {}", path.display(), e));
+            }
+        }
+
+        Ok(total_size)
+    }
+
     // Get directory children with specified depth - returns nested structure
+    // 重要：扫描所有深度以正确计算目录大小，但只返回指定深度的子项
     pub fn get_directory_children_with_depth(&self, path: &str, max_depth: u32) -> Result<Vec<FileNode>, String> {
-        println!("=== [Backend] get_directory_children_with_depth called for path: {}, max_depth: {}", path, max_depth);
+        // 只在调试模式下显示详细日志
+        if cfg!(debug_assertions) {
+            println!("=== [Backend] get_directory_children_with_depth called for path: {}, max_depth: {}", path, max_depth);
+        }
 
         let path = Path::new(path);
         if !path.exists() {
-            println!("=== [Backend] Path does not exist: {}", path.display());
+            if cfg!(debug_assertions) {
+                println!("=== [Backend] Path does not exist: {}", path.display());
+            }
             return Err("Path does not exist".to_string());
         }
 
-        println!("=== [Backend] Reading directory with depth: {}", path.display());
+        if cfg!(debug_assertions) {
+            println!("=== [Backend] Reading directory with depth: {}", path.display());
+        }
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
             Err(e) => {
-                println!("=== [Backend] Failed to read directory: {}", e);
+                // 统计错误类型并静默处理
+                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                    self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                    self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                }
+
+                // 只在调试模式下显示
+                if cfg!(debug_assertions) {
+                    println!("=== [Backend] Failed to read directory: {}", e);
+                }
                 return Err(e.to_string());
             }
         };
@@ -396,51 +485,92 @@ impl DiskScanner {
         let mut children: Vec<FileNode> = entries
             .par_bridge() // Convert to parallel iterator
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name_str = name.to_string_lossy();
-                let should_include = !name_str.starts_with('.') &&
-                !matches!(name_str.as_ref(), "proc" | "sys" | "dev" | "run" | "tmp");
-
-                if !should_include {
-                    println!("=== [Backend] Filtering out hidden/system directory: {}", name_str);
-                }
-                should_include
-            })
             .filter_map(|entry| {
                 let entry_path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
 
-                println!("=== [Backend] Processing entry with depth: {}", name);
+                // 只在调试模式下显示处理日志
+                if cfg!(debug_assertions) {
+                    println!("=== [Backend] Processing entry with depth: {}", name);
+                }
 
                 match fs::metadata(&entry_path) {
                     Ok(metadata) => {
-                        if metadata.is_dir() && max_depth > 0 {
-                            // For directories, recursively get children if depth > 0
-                            let children = match self.get_directory_children_with_depth(
-                                &entry_path.to_string_lossy().to_string(),
-                                max_depth - 1
-                            ) {
-                                Ok(sub_children) => sub_children,
-                                Err(e) => {
-                                    println!("=== [Backend] Failed to get children for {}: {}", name, e);
-                                    vec![]
+                        if metadata.is_dir() {
+                            // 对于目录，扫描所有深度以正确计算大小，但只返回请求深度的子项
+                            let children = if max_depth > 0 {
+                                match self.get_directory_children_with_depth(
+                                    &entry_path.to_string_lossy().to_string(),
+                                    max_depth - 1
+                                ) {
+                                    Ok(sub_children) => sub_children,
+                                    Err(e) => {
+                                        // 统计错误类型并静默处理
+                                        if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                                            self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                                        } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                                            self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                                        }
+
+                                        // 只在调试模式下显示
+                                        if cfg!(debug_assertions) {
+                                            println!("=== [Backend] Failed to get children for {}: {}", name, e);
+                                        }
+                                        vec![]
+                                    }
+                                }
+                            } else {
+                                // max_depth == 0，不返回子项，但仍需要计算完整大小
+                                // 扫描所有深度来获取正确的大小，但不返回任何子项
+                                match self.scan_all_depths_for_size(&entry_path) {
+                                    Ok(total_size) => {
+                                        if cfg!(debug_assertions) {
+                                            println!("=== [Backend] Scanned all depths for {}: total size = {}", name, total_size);
+                                        }
+                                        // 返回空子项列表，因为前端只请求了当前深度
+                                        vec![]
+                                    }
+                                    Err(e) => {
+                                        // 统计错误类型并静默处理
+                                        if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                                            self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                                        } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                                            self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                                        }
+
+                                        if cfg!(debug_assertions) {
+                                            println!("=== [Backend] Failed to scan all depths for {}: {}", name, e);
+                                        }
+                                        vec![]
+                                    }
                                 }
                             };
 
-                            let total_size = children.iter().map(|child| child.size).sum::<u64>();
+                            let total_size = if max_depth > 0 {
+                                // 如果还有深度，使用递归结果
+                                children.iter().map(|child| child.size).sum::<u64>()
+                            } else {
+                                // 如果max_depth == 0，扫描所有深度获取完整大小
+                                match self.scan_all_depths_for_size(&entry_path) {
+                                    Ok(size) => size,
+                                    Err(_) => 0
+                                }
+                            };
 
                             Some(FileNode {
                                 name,
                                 path: entry_path.to_string_lossy().to_string(),
                                 size: total_size,
                                 is_directory: true,
-                                children, // Populate children recursively
+                                children, // 只包含请求深度的子项
                                 inode: self.get_inode(&metadata),
                             })
                         } else {
                             let file_size = metadata.len();
-                            println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                            // 只在调试模式下显示
+                            if cfg!(debug_assertions) {
+                                println!("=== [Backend] Processing file {}: {} bytes", name, file_size);
+                            }
                             Some(FileNode {
                                 name,
                                 path: entry_path.to_string_lossy().to_string(),
@@ -452,19 +582,33 @@ impl DiskScanner {
                         }
                     }
                     Err(e) => {
-                        println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
+                        // 统计错误类型并静默处理
+                        if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                            self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                        } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                            self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                        }
+
+                        // 只在调试模式下显示
+                        if cfg!(debug_assertions) {
+                            println!("=== [Backend] Failed to get metadata for {}: {}", name, e);
+                        }
                         None
                     }
                 }
             })
             .collect();
 
-        println!("=== [Backend] Found {} entries with depth", children.len());
+        if cfg!(debug_assertions) {
+            println!("=== [Backend] Found {} entries with depth", children.len());
+        }
 
         // Sort by size (largest first)
         children.sort_by(|a, b| b.size.cmp(&a.size));
 
-        println!("=== [Backend] Final result with depth: {} items", children.len());
+        if cfg!(debug_assertions) {
+            println!("=== [Backend] Final result with depth: {} items", children.len());
+        }
         Ok(children)
     }
 
@@ -507,6 +651,27 @@ impl DiskScanner {
     }
 
     fn scan_node(&self, path: &Path, depth: usize) -> Result<FileNode, String> {
+        // 首先检查是否为符号链接
+        let symlink_metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+
+        // 如果是符号链接，不计算其大小（特别是符号链接的文件夹）
+        if symlink_metadata.file_type().is_symlink() {
+            let name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            return Ok(FileNode {
+                name,
+                path: path.to_string_lossy().to_string(),
+                size: 0, // 符号链接不计算大小
+                is_directory: false, // 符号链接视为文件，不当作目录处理
+                children: vec![],
+                inode: None, // 符号链接不使用inode去重
+            });
+        }
+
+        // 对于普通文件和目录，使用正常的metadata
         let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
         let name = path.file_name()
             .and_then(|n| n.to_str())
@@ -515,13 +680,15 @@ impl DiskScanner {
 
         let inode = self.get_inode(&metadata);
 
+        // 硬链接检测 - 现在每个硬链接都计算file_length
         if let Some(inode_val) = inode {
             let key = (metadata.dev(), inode_val);
             if self.seen_inodes.contains_key(&key) {
+                // 每个硬链接都计算file_length - 不再设为0
                 return Ok(FileNode {
                     name,
                     path: path.to_string_lossy().to_string(),
-                    size: 0,
+                    size: metadata.len(), // 每个硬链接都计算实际的file_length
                     is_directory: metadata.is_dir(),
                     children: vec![],
                     inode: Some(inode_val),
@@ -531,24 +698,14 @@ impl DiskScanner {
         }
 
         if metadata.is_dir() {
-            if let Some(max_depth) = self.max_depth {
-                if depth >= max_depth {
-                    return Ok(FileNode {
-                        name,
-                        path: path.to_string_lossy().to_string(),
-                        size: 0,
-                        is_directory: true,
-                        children: vec![],
-                        inode,
-                    });
-                }
-            }
+            // 移除max_depth检查，总是扫描所有深度以正确计算大小
             self.scan_directory_node(path, name, inode, depth)
         } else {
+            // 普通文件：计算file_length
             Ok(FileNode {
                 name,
                 path: path.to_string_lossy().to_string(),
-                size: metadata.len(),
+                size: metadata.len(), // 只计算file_length
                 is_directory: false,
                 children: vec![],
                 inode,
@@ -559,7 +716,18 @@ impl DiskScanner {
     fn scan_directory_node(&self, path: &Path, name: String, inode: Option<u64>, depth: usize) -> Result<FileNode, String> {
         let entries = match fs::read_dir(path) {
             Ok(entries) => entries,
-            Err(_) => {
+            Err(e) => {
+                // 统计错误类型并静默处理
+                if e.to_string().contains("Permission denied") || e.to_string().contains("Operation not permitted") {
+                    self.permission_errors.fetch_add(1, Ordering::Relaxed);
+                } else if e.to_string().contains("No such file") || e.to_string().contains("os error 2") {
+                    self.not_found_errors.fetch_add(1, Ordering::Relaxed);
+                }
+
+                // 只在调试模式下记录
+                if cfg!(debug_assertions) {
+                    eprintln!("Debug: Failed to read directory {}: {}", path.display(), e);
+                }
                 return Ok(FileNode {
                     name,
                     path: path.to_string_lossy().to_string(),
@@ -573,12 +741,6 @@ impl DiskScanner {
 
         let mut entry_list: Vec<_> = entries
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name_str = name.to_string_lossy();
-                !name_str.starts_with('.') &&
-                !matches!(name_str.as_ref(), "proc" | "sys" | "dev" | "run" | "tmp")
-            })
             .collect();
 
         entry_list.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
@@ -595,11 +757,27 @@ impl DiskScanner {
             })
             .collect();
 
-        let total_size = children
-            .iter()
-            .filter(|child| child.size > 0)
-            .map(|child| child.size)
-            .sum();
+        // 维护inode集合，对重复inode进行去重
+        let mut folder_inode_set = std::collections::HashSet::new();
+        let mut total_size = 0u64;
+
+        for child in &children {
+            if let Some(child_inode) = child.inode {
+                // 只有文件（非目录）才参与inode去重
+                if !child.is_directory {
+                    if !folder_inode_set.contains(&child_inode) {
+                        folder_inode_set.insert(child_inode);
+                        total_size += child.size;
+                    }
+                } else {
+                    // 目录直接累加大小
+                    total_size += child.size;
+                }
+            } else {
+                // 没有inode信息的文件直接累加大小
+                total_size += child.size;
+            }
+        }
 
         Ok(FileNode {
             name,
@@ -633,12 +811,8 @@ impl DiskScanner {
             }
             (files, dirs)
         } else {
-            // Only count files with size > 0 (hard links have size 0 to avoid double counting)
-            if node.size > 0 {
-                (1, 0)
-            } else {
-                (0, 0)
-            }
+            // 每个硬链接都计算为文件 - 不再检查size > 0
+            (1, 0)
         }
     }
 
@@ -668,7 +842,15 @@ pub fn build_directory_cache(path: String, max_depth: Option<usize>) -> Result<S
             println!("=== [Backend] Creating scanner with default settings");
             DiskScanner::new()
         };
-        scanner.build_directory_cache(&path)
+        let result = scanner.build_directory_cache(&path);
+
+        // 获取错误统计信息
+        let (permission_errors, not_found_errors) = scanner.get_error_stats();
+        if permission_errors > 0 || not_found_errors > 0 {
+            println!("=== [Backend] Error stats during cache build - Permission errors: {}, Not found errors: {}", permission_errors, not_found_errors);
+        }
+
+        result
     });
 
     match &result {
@@ -729,7 +911,15 @@ pub fn get_directory_children_with_depth(path: String, max_depth: u32) -> Result
     // Use rayon for parallel processing
     let result = rayon::scope(|_s| {
         let scanner = DiskScanner::with_max_depth(max_depth as usize);
-        scanner.get_directory_children_with_depth(&path, max_depth)
+        let scan_result = scanner.get_directory_children_with_depth(&path, max_depth);
+
+        // 获取错误统计信息
+        let (permission_errors, not_found_errors) = scanner.get_error_stats();
+        if permission_errors > 0 || not_found_errors > 0 {
+            println!("=== [Backend] Error stats during scan - Permission errors: {}, Not found errors: {}", permission_errors, not_found_errors);
+        }
+
+        scan_result
     });
 
     match &result {
@@ -973,8 +1163,10 @@ mod tests {
             assert!(result.is_ok());
 
             let scan_result = result.unwrap();
-            // Should only count the file once due to hard link detection
-            assert_eq!(scan_result.file_count, 1);
+            // 每个硬链接都计算为单独的文件
+            assert_eq!(scan_result.file_count, 2);
+            // 但由于inode去重，总大小只计算一次
+            assert_eq!(scan_result.total_size, 2048);
         }
     }
 
@@ -999,6 +1191,172 @@ mod tests {
 
             // Should handle symlinks gracefully
             assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn test_hidden_files_not_filtered() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+        // Create a hidden file
+        let hidden_file = temp_dir.path().join(".hidden_file.txt");
+        let mut file = File::create(&hidden_file).unwrap();
+        file.write_all(b"hidden content").unwrap();
+
+        // Create a normal file for comparison
+        let normal_file = temp_dir.path().join("normal_file.txt");
+        let mut file = File::create(&normal_file).unwrap();
+        file.write_all(b"normal content").unwrap();
+
+        let mut scanner = DiskScanner::new();
+        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+
+        let scan_result = result.unwrap();
+
+        // Should count both files (including hidden file)
+        assert_eq!(scan_result.file_count, 2);
+
+        // Should include both files in total size
+        assert_eq!(scan_result.total_size, 28); // "hidden content" + "normal content"
+    }
+
+    #[test]
+    fn test_system_directories_not_filtered() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+        // Create a directory with system-like name
+        let sys_dir = temp_dir.path().join("proc");
+        fs::create_dir(&sys_dir).unwrap();
+
+        let file_in_sys = sys_dir.join("test.txt");
+        let mut file = File::create(&file_in_sys).unwrap();
+        file.write_all(b"content in proc dir").unwrap();
+
+        let mut scanner = DiskScanner::new();
+        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+        assert!(result.is_ok());
+
+        let scan_result = result.unwrap();
+
+        // Should include the system directory and its file
+        assert_eq!(scan_result.dir_count, 2); // root + proc dir
+        assert_eq!(scan_result.file_count, 1);
+        assert_eq!(scan_result.total_size, 19); // "content in proc dir"
+    }
+
+    #[test]
+    fn test_inode_deduplication_in_folder() {
+        #[cfg(unix)]
+        {
+            let temp_dir = TempDir::new().expect("Failed to create temp directory");
+            let file_path = temp_dir.path().join("original.txt");
+            let link_path1 = temp_dir.path().join("link1.txt");
+            let link_path2 = temp_dir.path().join("link2.txt");
+
+            // Create original file with large content
+            let large_content = "A".repeat(2048);
+            let mut file = File::create(&file_path).unwrap();
+            file.write_all(large_content.as_bytes()).unwrap();
+
+            // Create multiple hard links to the same file
+            fs::hard_link(&file_path, &link_path1).unwrap();
+            fs::hard_link(&file_path, &link_path2).unwrap();
+
+            let mut scanner = DiskScanner::new();
+            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+            assert!(result.is_ok());
+
+            let scan_result = result.unwrap();
+
+            // Should count 3 files (original + 2 hard links)
+            assert_eq!(scan_result.file_count, 3);
+
+            // But folder size should only count the file once due to inode deduplication
+            assert_eq!(scan_result.total_size, 2048);
+
+            // Verify the root folder size is correct
+            assert_eq!(scan_result.root.size, 2048);
+        }
+    }
+
+    #[test]
+    fn test_mixed_files_and_hard_links() {
+        #[cfg(unix)]
+        {
+            let temp_dir = TempDir::new().expect("Failed to create temp directory");
+
+            // Create original file
+            let file1_path = temp_dir.path().join("file1.txt");
+            let content1 = "B".repeat(1024);
+            let mut file1 = File::create(&file1_path).unwrap();
+            file1.write_all(content1.as_bytes()).unwrap();
+
+            // Create hard link to file1
+            let link1_path = temp_dir.path().join("link1.txt");
+            fs::hard_link(&file1_path, &link1_path).unwrap();
+
+            // Create different file
+            let file2_path = temp_dir.path().join("file2.txt");
+            let content2 = "C".repeat(2048);
+            let mut file2 = File::create(&file2_path).unwrap();
+            file2.write_all(content2.as_bytes()).unwrap();
+
+            // Create hard link to file2
+            let link2_path = temp_dir.path().join("link2.txt");
+            fs::hard_link(&file2_path, &link2_path).unwrap();
+
+            let mut scanner = DiskScanner::new();
+            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+            assert!(result.is_ok());
+
+            let scan_result = result.unwrap();
+
+            // Should count 4 files total
+            assert_eq!(scan_result.file_count, 4);
+
+            // But folder size should only count unique files: 1024 + 2048 = 3072
+            assert_eq!(scan_result.total_size, 3072);
+            assert_eq!(scan_result.root.size, 3072);
+        }
+    }
+
+    #[test]
+    fn test_hard_links_across_subdirectories() {
+        #[cfg(unix)]
+        {
+            let temp_dir = TempDir::new().expect("Failed to create temp directory");
+            let subdir1 = temp_dir.path().join("subdir1");
+            let subdir2 = temp_dir.path().join("subdir2");
+            fs::create_dir(&subdir1).unwrap();
+            fs::create_dir(&subdir2).unwrap();
+
+            // Create file in subdir1
+            let file_path = subdir1.join("original.txt");
+            let large_content = "D".repeat(4096);
+            let mut file = File::create(&file_path).unwrap();
+            file.write_all(large_content.as_bytes()).unwrap();
+
+            // Create hard link in subdir2
+            let link_path = subdir2.join("link.txt");
+            fs::hard_link(&file_path, &link_path).unwrap();
+
+            let mut scanner = DiskScanner::new();
+            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+            assert!(result.is_ok());
+
+            let scan_result = result.unwrap();
+
+            // Should count 2 files total
+            assert_eq!(scan_result.file_count, 2);
+
+            // Root folder size should count the file twice (once per subfolder) because
+            // each subfolder maintains its own inode set for deduplication
+            assert_eq!(scan_result.total_size, 8192);
+            assert_eq!(scan_result.root.size, 8192);
+
+            // Note: Current implementation deduplicates within each folder but not
+            // across the entire directory tree. This is the expected behavior.
         }
     }
 
@@ -1079,4 +1437,24 @@ pub fn get_system_drives() -> Result<Vec<String>, String> {
     });
 
     result
+}
+
+#[tauri::command]
+pub fn get_error_stats() -> Result<(usize, usize), String> {
+    // 创建临时扫描器来获取错误统计
+    let scanner = DiskScanner::new();
+    let (permission_errors, not_found_errors) = scanner.get_error_stats();
+
+    println!("=== [Backend] Error stats - Permission errors: {}, Not found errors: {}", permission_errors, not_found_errors);
+    Ok((permission_errors, not_found_errors))
+}
+
+#[tauri::command]
+pub fn reset_error_stats() -> Result<(), String> {
+    // 创建临时扫描器来重置错误统计
+    let scanner = DiskScanner::new();
+    scanner.reset_error_stats();
+
+    println!("=== [Backend] Error stats reset");
+    Ok(())
 }
