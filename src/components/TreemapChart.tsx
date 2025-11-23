@@ -161,7 +161,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
         })
-        .on('mouseout', function (_event, d) {
+        .on('mouseout', function (_event, _d) {
           d3.select(this)
             .style('opacity', 0.8)
             .style('stroke', '#fff')

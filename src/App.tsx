@@ -41,7 +41,6 @@ function App() {
   const [viewMode, setViewMode] = useState<'sunburst' | 'treemap'>('sunburst')
   const [maxDepth, setMaxDepth] = useState<number>(2)
   const [isTauri, setIsTauri] = useState<boolean>(false)
-  const [isInitialized, setIsInitialized] = useState<boolean>(false)
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -139,28 +138,6 @@ function App() {
       await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
     }
   }, [currentPath, loadDirectoryChildrenWithDepth])
-
-  // Initial load
-  useEffect(() => {
-    const initializeApp = async () => {
-      if (isInitialized) return
-      setIsInitialized(true)
-
-      if (window.__TAURI__) {
-        try {
-          const drives = await invoke<string[]>('get_system_drives')
-          if (drives && drives.length > 0) {
-            const rootPath = drives[0]
-            await buildCache(rootPath)
-            await loadDirectoryChildrenWithDepth(rootPath, maxDepth)
-          }
-        } catch (err) {
-          setError(`Failed to initialize: ${err}`)
-        }
-      }
-    }
-    // initializeApp()
-  }, [isInitialized, buildCache, loadDirectoryChildrenWithDepth])
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
