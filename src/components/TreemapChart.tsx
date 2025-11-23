@@ -61,15 +61,26 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
 
       svg.attr('width', chartWidth).attr('height', chartHeight);
 
-      // Create hierarchy with filtered data - ONLY immediate children (one layer)
-      const root = d3.hierarchy(data)
-        .sum(d => d.size)  // Use size for leaf nodes
-        .sort((a, b) => (b.value || 0) - (a.value || 0));
+      // Create hierarchy with filtered data - filter out hidden nodes
+      const root = d3.hierarchy(data, (d) => {
+        if (!d.children) return null;
+        const visibleChildren = d.children.filter(c => c.show);
+        return visibleChildren.length > 0 ? visibleChildren : null;
+      })
+
+      // Use backend-provided sizes directly without recalculation
+      root.each((node: any) => {
+        node.value = node.data.size;
+      });
+
+      // Sort by value
+      root.sort((a, b) => (b.value || 0) - (a.value || 0));
 
       // Create treemap layout
       const treemap = d3.treemap<FileNode>()
+        .tile(d3.treemapSquarify)
         .size([treemapWidth, treemapHeight])
-        .padding(2)
+        .padding(1)
         .round(true);
 
       treemap(root);
@@ -81,18 +92,35 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .style('opacity', 0);
 
       // Create rectangles for each item
+      // We only want to render the leaves of our filtered hierarchy
+      const leaves = root.leaves() as d3.HierarchyRectangularNode<FileNode>[];
+
       const cells = svg.selectAll('g')
-        .data(root.descendants().filter(d => d.data.show))
+        .data(leaves)
         .enter()
         .append('g')
         .attr('transform', d => `translate(${d.x0 + padding},${d.y0 + padding})`);
 
-      // Color function - different colors for directories vs files
+      // Color scale
+      const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+      // Color function - color by top-level parent (block)
       const getColor = (d: d3.HierarchyRectangularNode<FileNode>) => {
-        if (d.data.is_directory) {
-          return '#3498db'; // Blue for directories
+        // Find the ancestor at depth 1 (direct child of root)
+        const ancestors = d.ancestors();
+        // ancestors is [node, parent, ..., root]
+        // We want the one just before root (which is at index length - 2)
+        // If the node itself is depth 1, it will be at index 0, and length is 2.
+
+        let categoryNode = d;
+        if (ancestors.length > 2) {
+          categoryNode = ancestors[ancestors.length - 2] as d3.HierarchyRectangularNode<FileNode>;
+        } else if (d.depth === 1) {
+          categoryNode = d;
         }
-        return '#f39c12'; // Orange for files
+        // If d is root (depth 0), fallback (though leaves shouldn't be root usually)
+
+        return colorScale(categoryNode.data.name);
       };
 
       // Add rectangles - entire area is clickable
@@ -101,7 +129,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .attr('height', d => d.y1 - d.y0)
         .style('fill', getColor)
         .style('stroke', '#fff')
-        .style('stroke-width', 2)
+        .style('stroke-width', 1)
         .style('cursor', 'pointer')
         .style('opacity', 0.8)
         .on('mouseover', function (event, d) {
@@ -158,15 +186,17 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .text(d => {
           const width = d.x1 - d.x0;
           const height = d.y1 - d.y0;
-          const area = width * height;
-          return (area > 1000 && d.data.name.length < 25) ? d.data.name : '';
+
+          if (width < d.data.name.length * 15 || height < 20) return '';
+
+          return `${d.data.name}`;
         })
         .style('font-size', '14px')
         .style('font-weight', 'bold')
         .style('fill', d => d.data.is_directory ? '#2c3e50' : '#333')
         .style('pointer-events', 'none');
 
-      // Add size/type labels
+      // Add size labels
       cells.append('text')
         .attr('x', d => (d.x1 - d.x0) / 2)
         .attr('y', d => (d.y1 - d.y0) / 2 + 15)
@@ -174,14 +204,34 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .text(d => {
           const width = d.x1 - d.x0;
           const height = d.y1 - d.y0;
-          const area = width * height;
-          if (area <= 1500) return '';
+
+          const text = formatSize(d.data.size);
+
+          if (width < text.length * 13 || height < 40) return '';
+          return text;
+        })
+        .style('font-size', '12px')
+        .style('fill', d => d.data.is_directory ? '#34495e' : '#7f8c8d')
+        .style('pointer-events', 'none');
+
+      // Add type labels
+      cells.append('text')
+        .attr('x', d => (d.x1 - d.x0) / 2)
+        .attr('y', d => (d.y1 - d.y0) / 2 + 35)
+        .attr('text-anchor', 'middle')
+        .text(d => {
+          const width = d.x1 - d.x0;
+          const height = d.y1 - d.y0;
 
           if (d.data.is_directory) {
             const childrenCount = d.data.children ? d.data.children.length : 0;
-            return childrenCount > 0 ? `${childrenCount} items` : 'Empty';
+            const text = childrenCount > 0 ? `${childrenCount} items` : 'Empty';
+
+            if (width < text.length * 13 || height < 60) return '';
+
+            return text;
           } else {
-            return formatSize(d.data.size);
+            return "";
           }
         })
         .style('font-size', '12px')

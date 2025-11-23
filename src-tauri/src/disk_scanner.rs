@@ -154,7 +154,13 @@ pub fn build_cache(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_result_with_depth(path: String, max_depth: u32) -> Result<FileNode, String> {
-    SCANNER.get_result_with_depth(&path, max_depth)
+    if let Ok(node) = SCANNER.get_result_with_depth(&path, max_depth) {
+        Ok(node)
+    } else {
+        // Let us try again
+        build_cache(path.clone())?;
+        SCANNER.get_result_with_depth(&path, max_depth)
+    }
 }
 
 #[tauri::command]
