@@ -85,7 +85,7 @@ interface FileNode {
   size: number
   is_directory: boolean
   children: FileNode[]
-  children_count?: number
+  children_count: number
 }
 
 function App() {
@@ -108,23 +108,23 @@ function App() {
     setLoading(true)
     setError('')
     try {
-      await invoke<string>('build_directory_cache', { path, maxDepth })
+      await invoke<string>('build_cache', { path })
     } catch (err) {
       setError(`Failed to build cache: ${err}`)
     } finally {
       setLoading(false)
     }
-  }, [maxDepth])
+  }, [])
 
   const loadDirectoryChildrenWithDepth = useCallback(async (path: string, depth: number = 2) => {
     setLoading(true)
     setError(null)
     try {
-      const children = await invoke<FileNode[]>('get_directory_children_with_depth', {
+      const root_node = await invoke<FileNode>('get_result_with_depth', {
         path,
         maxDepth: depth
       })
-      setCurrentData(children as FileNode[])
+      setCurrentData(root_node.children as FileNode[])
       setCurrentPath(path)
     } catch (err) {
       setError(`Failed to load directory children: ${err}`)

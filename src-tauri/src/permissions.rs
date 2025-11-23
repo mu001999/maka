@@ -43,8 +43,6 @@ pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, 
     use std::time::{Duration, Instant};
     use tauri::api::dialog::FileDialogBuilder;
 
-    println!("=== [Backend] Opening directory selection dialog...");
-
     let result = Arc::new(Mutex::new(None));
     let result_clone = result.clone();
 
@@ -70,7 +68,6 @@ pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, 
         drop(result_guard);
     }
 
-    println!("=== [Backend] Directory selection timed out");
     Ok(None)
 }
 
