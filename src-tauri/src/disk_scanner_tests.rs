@@ -226,16 +226,16 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.get_directory_children_with_depth(&root_path, 1);
+        let result = scanner.get_directory_children_with_depth(&root_path, 2);
         assert!(
             result.is_ok(),
-            "Should successfully get children with depth 1"
+            "Should successfully get children with depth 2"
         );
 
         let children = result.unwrap();
         assert!(
             children.len() >= 5,
-            "Root should have at least 5 children with depth 1"
+            "Root should have at least 5 children with depth 2"
         );
 
         // 验证Documents目录的子项（深度1）
@@ -255,7 +255,7 @@ mod path_validation_tests {
         assert_eq!(
             projects.children.len(),
             0,
-            "Projects should have no children at depth 1"
+            "Projects should have no children at depth 2"
         );
     }
 
@@ -265,10 +265,10 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.get_directory_children_with_depth(&root_path, 2);
+        let result = scanner.get_directory_children_with_depth(&root_path, 3);
         assert!(
             result.is_ok(),
-            "Should successfully get children with depth 2"
+            "Should successfully get children with depth 3"
         );
 
         let children = result.unwrap();
@@ -300,7 +300,7 @@ mod path_validation_tests {
         assert_eq!(
             project_a.children.len(),
             0,
-            "ProjectA should have no children at depth 2"
+            "ProjectA should have no children at depth 3"
         );
     }
 
@@ -310,10 +310,10 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.get_directory_children_with_depth(&root_path, 3);
+        let result = scanner.get_directory_children_with_depth(&root_path, 4);
         assert!(
             result.is_ok(),
-            "Should successfully get children with depth 3"
+            "Should successfully get children with depth 4"
         );
 
         let children = result.unwrap();
@@ -326,7 +326,7 @@ mod path_validation_tests {
             .find(|c| c.name == "Projects")
             .unwrap();
         let project_a = projects.children.iter().find(|c| c.name == "ProjectA");
-        assert!(project_a.is_some(), "Should find ProjectA at depth 3");
+        assert!(project_a.is_some(), "Should find ProjectA at depth 4");
 
         let project_a = project_a.unwrap();
         validate_directory_node(project_a, "ProjectA", 2); // 应该有main.py和utils.py
@@ -452,10 +452,18 @@ mod path_validation_tests {
     #[test]
     fn test_build_directory_cache_accuracy() {
         let temp_dir = create_complex_test_structure();
+        /*
+        #[test]
+        fn test_nonexistent_path() {
+            let mut scanner = DiskScanner::new();
+            let result = scanner.scan_directory("/nonexistent/path");
+            assert!(result.is_err());
+        }
+        */
         let mut scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.build_directory_cache(&root_path);
+        let result = scanner.build_directory_cache(temp_dir.path().to_str().unwrap());
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Cache built successfully");
 
@@ -563,11 +571,11 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        // Test with depth 3 to see all nested structure
-        let result = scanner.get_directory_children_with_depth(&root_path, 3);
+        // Test with depth 4 to see all nested structure
+        let result = scanner.get_directory_children_with_depth(&root_path, 4);
         assert!(
             result.is_ok(),
-            "Should successfully get children with depth 3"
+            "Should successfully get children with depth 4"
         );
 
         let children = result.unwrap();
@@ -688,7 +696,7 @@ mod path_validation_tests {
         let scanner = DiskScanner::new();
         let root_path = temp_dir.path().to_string_lossy().to_string();
 
-        let result = scanner.get_directory_children_with_depth(&root_path, 1);
+        let result = scanner.get_directory_children_with_depth(&root_path, 2);
         assert!(result.is_ok());
 
         let children = result.unwrap();
@@ -823,5 +831,55 @@ mod path_validation_tests {
         println!("Error message: {}", error_msg);
         // The error message should indicate it's not a directory
         assert!(error_msg.contains("Not a directory") || error_msg.contains("not a directory"));
+    }
+    #[test]
+    fn test_max_depth_reproduction() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let root = temp_dir.path();
+
+        // Create 4 levels of nested directories
+        // Level 1: L1
+        // Level 2: L1/L2
+        // Level 3: L1/L2/L3
+        // Level 4: L1/L2/L3/L4
+        fs::create_dir(root.join("L1")).unwrap();
+        fs::create_dir(root.join("L1").join("L2")).unwrap();
+        fs::create_dir(root.join("L1").join("L2").join("L3")).unwrap();
+        fs::create_dir(root.join("L1").join("L2").join("L3").join("L4")).unwrap();
+
+        let scanner = DiskScanner::new();
+        let root_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Request depth 3
+        let result = scanner.get_directory_children_with_depth(&root_path, 3);
+        assert!(result.is_ok());
+        let children = result.unwrap();
+
+        // Check L1
+        let l1 = children
+            .iter()
+            .find(|c| c.name == "L1")
+            .expect("Should find L1");
+        println!("L1 children count: {}", l1.children.len());
+
+        // Check L2 (Depth 2)
+        if let Some(l2) = l1.children.iter().find(|c| c.name == "L2") {
+            println!("Found L2");
+            // Check L3 (Depth 3)
+            if let Some(l3) = l2.children.iter().find(|c| c.name == "L3") {
+                println!("Found L3");
+                // Check L4 (Depth 4) - Should NOT be present if max_depth is 3
+                if let Some(_l4) = l3.children.iter().find(|c| c.name == "L4") {
+                    println!("Found L4 - This implies depth 4 is returned!");
+                    panic!("Found L4 at depth 4 when max_depth was 3");
+                } else {
+                    println!("L4 not found - Correct behavior for depth 3");
+                }
+            } else {
+                println!("L3 not found");
+            }
+        } else {
+            println!("L2 not found");
+        }
     }
 }

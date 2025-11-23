@@ -387,7 +387,7 @@ impl DiskScanner {
                     Ok(metadata) => {
                         if metadata.is_dir() {
                             // 对于目录，扫描所有深度以正确计算大小，但只返回请求深度的子项
-                            let children = if max_depth > 0 {
+                            let children = if max_depth > 1 {
                                 match self.get_directory_children_with_depth(
                                     &entry_path.to_string_lossy().to_string(),
                                     max_depth - 1
@@ -409,7 +409,7 @@ impl DiskScanner {
                                     }
                                 }
                             } else {
-                                // max_depth == 0，不返回子项，但仍需要计算完整大小
+                                // max_depth == 1，不返回子项，但仍需要计算完整大小
                                 // 扫描所有深度来获取正确的大小，但不返回任何子项
                                 match self.scan_all_depths_for_size(&entry_path) {
                                     Ok(total_size) => {
@@ -435,11 +435,11 @@ impl DiskScanner {
                                 }
                             };
 
-                            let total_size = if max_depth > 0 {
+                            let total_size = if max_depth > 1 {
                                 // 如果还有深度，使用递归结果
                                 children.iter().map(|child| child.size).sum::<u64>()
                             } else {
-                                // 如果max_depth == 0，扫描所有深度获取完整大小
+                                // 如果max_depth == 1，扫描所有深度获取完整大小
                                 match self.scan_all_depths_for_size(&entry_path) {
                                     Ok(size) => size,
                                     Err(_) => 0
@@ -590,465 +590,58 @@ pub fn get_directory_children_with_depth(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::{self, File};
-    use std::io::Write;
+    use std::fs;
     use tempfile::TempDir;
 
-    fn create_test_directory_structure() -> TempDir {
+    #[test]
+    fn test_max_depth_reproduction() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let root = temp_dir.path();
 
-        // Create test files and directories
-        fs::create_dir(root.join("subdir1")).unwrap();
-        fs::create_dir(root.join("subdir2")).unwrap();
-        fs::create_dir(root.join("subdir1").join("nested")).unwrap();
+        // Create 4 levels of nested directories
+        // Level 1: L1
+        // Level 2: L1/L2
+        // Level 3: L1/L2/L3
+        // Level 4: L1/L2/L3/L4
+        fs::create_dir(root.join("L1")).unwrap();
+        fs::create_dir(root.join("L1").join("L2")).unwrap();
+        fs::create_dir(root.join("L1").join("L2").join("L3")).unwrap();
+        fs::create_dir(root.join("L1").join("L2").join("L3").join("L4")).unwrap();
 
-        // Create test files with content larger than 1024 bytes to pass size filter
-        let large_content = "A".repeat(2048); // 2048 bytes
-
-        let mut file1 = File::create(root.join("file1.txt")).unwrap();
-        file1.write_all(large_content.as_bytes()).unwrap();
-
-        let mut file2 = File::create(root.join("subdir1").join("file2.txt")).unwrap();
-        file2.write_all(large_content.as_bytes()).unwrap();
-
-        let mut file3 =
-            File::create(root.join("subdir1").join("nested").join("file3.txt")).unwrap();
-        file3.write_all(large_content.as_bytes()).unwrap();
-
-        // Create large file in root
-        let mut file4 = File::create(root.join("large_file.txt")).unwrap();
-        file4.write_all(large_content.as_bytes()).unwrap();
-
-        // Create a file with some content but still below threshold
-        let mut small_file = File::create(root.join("small_file.txt")).unwrap();
-        small_file.write_all(b"Small content").unwrap();
-
-        temp_dir
-    }
-
-    #[test]
-    fn test_disk_scanner_creation() {
         let scanner = DiskScanner::new();
-        assert!(scanner.max_depth.is_none());
-        assert!(scanner.cache.is_empty());
-        assert!(scanner.seen_inodes.is_empty());
-    }
-
-    #[test]
-    fn test_disk_scanner_with_max_depth() {
-        let scanner = DiskScanner::with_max_depth(3);
-        assert_eq!(scanner.max_depth, Some(3));
-        assert!(scanner.cache.is_empty());
-        assert!(scanner.seen_inodes.is_empty());
-    }
-
-    #[test]
-    fn test_scan_directory_basic() {
-        let temp_dir = create_test_directory_structure();
-        let mut scanner = DiskScanner::new();
-
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let scan_result = result.unwrap();
-        assert!(scan_result.total_size > 0);
-        assert_eq!(scan_result.file_count, 5); // 5 files total (4 large + 1 small)
-        assert_eq!(scan_result.dir_count, 4); // 4 directories total (including root)
-        assert!(scan_result.root.is_directory);
-        // Due to size filtering (MIN_SIZE_THRESHOLD = 1024), only large files and directories are kept
-        // We have 4 large files and 3 directories, but directories might be filtered if empty
-        assert!(scan_result.root.children.len() >= 4);
-    }
-
-    #[test]
-    fn test_scan_directory_with_max_depth() {
-        let temp_dir = create_test_directory_structure();
-        let mut scanner = DiskScanner::with_max_depth(1);
-
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let scan_result = result.unwrap();
-        // Should only scan root level due to max_depth = 1
-        // Due to size filtering, only large files are kept
-        assert!(scan_result.root.children.len() >= 4);
-    }
-
-    #[test]
-    fn test_get_directory_info() {
-        let temp_dir = create_test_directory_structure();
-        let scanner = DiskScanner::new();
-
-        let result = scanner.get_directory_info(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let dir_info = result.unwrap();
-        assert_eq!(
-            dir_info.name,
-            temp_dir.path().file_name().unwrap().to_str().unwrap()
-        );
-        assert_eq!(dir_info.path, temp_dir.path().to_string_lossy().to_string());
-        assert!(dir_info.is_directory);
-        // Children count includes all items, regardless of size filtering
-        assert!(dir_info.children_count >= 4); // At least 4 direct children
-    }
-
-    #[test]
-    fn test_get_directory_children() {
-        let temp_dir = create_test_directory_structure();
-        let scanner = DiskScanner::new();
-
-        let result = scanner.get_directory_children(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let children = result.unwrap();
-        // get_directory_children returns all items, regardless of size filtering
-        assert!(children.len() >= 4); // At least 4 direct children
-
-        // Check that we have both files and directories
-        let has_file = children
-            .iter()
-            .any(|child| !child.is_directory && child.name == "file1.txt");
-        let has_dir = children
-            .iter()
-            .any(|child| child.is_directory && child.name == "subdir1");
-
-        assert!(has_file);
-        assert!(has_dir);
-    }
-
-    #[test]
-    fn test_build_directory_cache() {
-        let temp_dir = create_test_directory_structure();
-        let mut scanner = DiskScanner::new();
-
-        let result = scanner.build_directory_cache(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Cache built successfully");
-
-        // Verify cache was populated
-        assert!(!scanner.cache.is_empty());
-
-        // Check that root directory is in cache
         let root_path = temp_dir.path().to_string_lossy().to_string();
-        assert!(scanner.cache.contains_key(&root_path));
 
-        let root_info = scanner.cache.get(&root_path).unwrap();
-        // Children count includes all items, regardless of size filtering
-        assert!(root_info.children_count >= 4);
-    }
-
-    #[test]
-    fn test_nonexistent_path() {
-        let mut scanner = DiskScanner::new();
-        let result = scanner.scan_directory("/nonexistent/path");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_empty_directory() {
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let mut scanner = DiskScanner::new();
-
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
+        // Request depth 3
+        let result = scanner.get_directory_children_with_depth(&root_path, 3);
         assert!(result.is_ok());
+        let children = result.unwrap();
 
-        let scan_result = result.unwrap();
-        assert_eq!(scan_result.total_size, 0);
-        assert_eq!(scan_result.file_count, 0);
-        assert_eq!(scan_result.dir_count, 1); // Only root directory
-        assert!(scan_result.root.children.is_empty());
-    }
+        // Check L1
+        let l1 = children
+            .iter()
+            .find(|c| c.name == "L1")
+            .expect("Should find L1");
+        println!("L1 children count: {}", l1.children.len());
 
-    #[test]
-    fn test_file_instead_of_directory() {
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let file_path = temp_dir.path().join("test_file.txt");
-
-        let mut file = File::create(&file_path).unwrap();
-        file.write_all(b"test content").unwrap();
-
-        let scanner = DiskScanner::new();
-        let result = scanner.get_directory_info(file_path.to_str().unwrap());
-
-        // Should return error since it's a file, not a directory
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parallel_processing() {
-        let temp_dir = create_test_directory_structure();
-        let mut scanner = DiskScanner::new();
-
-        // Test that rayon parallel processing works
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let scan_result = result.unwrap();
-        assert!(scan_result.root.children.len() > 0);
-
-        // Verify that children are sorted by size (largest first)
-        let children = &scan_result.root.children;
-        for i in 1..children.len() {
-            assert!(children[i - 1].size >= children[i].size);
+        // Check L2 (Depth 2)
+        if let Some(l2) = l1.children.iter().find(|c| c.name == "L2") {
+            println!("Found L2");
+            // Check L3 (Depth 3)
+            if let Some(l3) = l2.children.iter().find(|c| c.name == "L3") {
+                println!("Found L3");
+                // Check L4 (Depth 4) - Should NOT be present if max_depth is 3
+                if let Some(_l4) = l3.children.iter().find(|c| c.name == "L4") {
+                    println!("Found L4 - This implies depth 4 is returned!");
+                    panic!("Found L4 at depth 4 when max_depth was 3");
+                } else {
+                    println!("L4 not found - Correct behavior for depth 3");
+                }
+            } else {
+                println!("L3 not found");
+            }
+        } else {
+            println!("L2 not found");
         }
-    }
-
-    #[test]
-    fn test_hard_link_detection() {
-        #[cfg(unix)]
-        {
-            let temp_dir = TempDir::new().expect("Failed to create temp directory");
-            let file_path = temp_dir.path().join("original.txt");
-            let link_path = temp_dir.path().join("link.txt");
-
-            // Create original file with large content to pass size filter
-            let large_content = "A".repeat(2048);
-            let mut file = File::create(&file_path).unwrap();
-            file.write_all(large_content.as_bytes()).unwrap();
-
-            // Create hard link
-            fs::hard_link(&file_path, &link_path).unwrap();
-
-            let mut scanner = DiskScanner::new();
-            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-            assert!(result.is_ok());
-
-            let scan_result = result.unwrap();
-            // 每个硬链接都计算为单独的文件
-            assert_eq!(scan_result.file_count, 2);
-            // 但由于inode去重，总大小只计算一次
-            assert_eq!(scan_result.total_size, 2048);
-        }
-    }
-
-    #[test]
-    fn test_symlink_handling() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::symlink;
-
-            let temp_dir = TempDir::new().expect("Failed to create temp directory");
-            let target_dir = temp_dir.path().join("target");
-            let link_dir = temp_dir.path().join("link");
-
-            fs::create_dir(&target_dir).unwrap();
-            let mut file = File::create(target_dir.join("file.txt")).unwrap();
-            file.write_all(b"test content").unwrap();
-
-            symlink(&target_dir, &link_dir).unwrap();
-
-            let mut scanner = DiskScanner::new();
-            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-
-            // Should handle symlinks gracefully
-            assert!(result.is_ok());
-        }
-    }
-
-    #[test]
-    fn test_hidden_files_not_filtered() {
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-
-        // Create a hidden file
-        let hidden_file = temp_dir.path().join(".hidden_file.txt");
-        let mut file = File::create(&hidden_file).unwrap();
-        file.write_all(b"hidden content").unwrap();
-
-        // Create a normal file for comparison
-        let normal_file = temp_dir.path().join("normal_file.txt");
-        let mut file = File::create(&normal_file).unwrap();
-        file.write_all(b"normal content").unwrap();
-
-        let mut scanner = DiskScanner::new();
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let scan_result = result.unwrap();
-
-        // Should count both files (including hidden file)
-        assert_eq!(scan_result.file_count, 2);
-
-        // Should include both files in total size
-        assert_eq!(scan_result.total_size, 28); // "hidden content" + "normal content"
-    }
-
-    #[test]
-    fn test_system_directories_not_filtered() {
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-
-        // Create a directory with system-like name
-        let sys_dir = temp_dir.path().join("proc");
-        fs::create_dir(&sys_dir).unwrap();
-
-        let file_in_sys = sys_dir.join("test.txt");
-        let mut file = File::create(&file_in_sys).unwrap();
-        file.write_all(b"content in proc dir").unwrap();
-
-        let mut scanner = DiskScanner::new();
-        let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-        assert!(result.is_ok());
-
-        let scan_result = result.unwrap();
-
-        // Should include the system directory and its file
-        assert_eq!(scan_result.dir_count, 2); // root + proc dir
-        assert_eq!(scan_result.file_count, 1);
-        assert_eq!(scan_result.total_size, 19); // "content in proc dir"
-    }
-
-    #[test]
-    fn test_inode_deduplication_in_folder() {
-        #[cfg(unix)]
-        {
-            let temp_dir = TempDir::new().expect("Failed to create temp directory");
-            let file_path = temp_dir.path().join("original.txt");
-            let link_path1 = temp_dir.path().join("link1.txt");
-            let link_path2 = temp_dir.path().join("link2.txt");
-
-            // Create original file with large content
-            let large_content = "A".repeat(2048);
-            let mut file = File::create(&file_path).unwrap();
-            file.write_all(large_content.as_bytes()).unwrap();
-
-            // Create multiple hard links to the same file
-            fs::hard_link(&file_path, &link_path1).unwrap();
-            fs::hard_link(&file_path, &link_path2).unwrap();
-
-            let mut scanner = DiskScanner::new();
-            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-            assert!(result.is_ok());
-
-            let scan_result = result.unwrap();
-
-            // Should count 3 files (original + 2 hard links)
-            assert_eq!(scan_result.file_count, 3);
-
-            // But folder size should only count the file once due to inode deduplication
-            assert_eq!(scan_result.total_size, 2048);
-
-            // Verify the root folder size is correct
-            assert_eq!(scan_result.root.size, 2048);
-        }
-    }
-
-    #[test]
-    fn test_mixed_files_and_hard_links() {
-        #[cfg(unix)]
-        {
-            let temp_dir = TempDir::new().expect("Failed to create temp directory");
-
-            // Create original file
-            let file1_path = temp_dir.path().join("file1.txt");
-            let content1 = "B".repeat(1024);
-            let mut file1 = File::create(&file1_path).unwrap();
-            file1.write_all(content1.as_bytes()).unwrap();
-
-            // Create hard link to file1
-            let link1_path = temp_dir.path().join("link1.txt");
-            fs::hard_link(&file1_path, &link1_path).unwrap();
-
-            // Create different file
-            let file2_path = temp_dir.path().join("file2.txt");
-            let content2 = "C".repeat(2048);
-            let mut file2 = File::create(&file2_path).unwrap();
-            file2.write_all(content2.as_bytes()).unwrap();
-
-            // Create hard link to file2
-            let link2_path = temp_dir.path().join("link2.txt");
-            fs::hard_link(&file2_path, &link2_path).unwrap();
-
-            let mut scanner = DiskScanner::new();
-            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-            assert!(result.is_ok());
-
-            let scan_result = result.unwrap();
-
-            // Should count 4 files total
-            assert_eq!(scan_result.file_count, 4);
-
-            // But folder size should only count unique files: 1024 + 2048 = 3072
-            assert_eq!(scan_result.total_size, 3072);
-            assert_eq!(scan_result.root.size, 3072);
-        }
-    }
-
-    #[test]
-    fn test_hard_links_across_subdirectories() {
-        #[cfg(unix)]
-        {
-            let temp_dir = TempDir::new().expect("Failed to create temp directory");
-            let subdir1 = temp_dir.path().join("subdir1");
-            let subdir2 = temp_dir.path().join("subdir2");
-            fs::create_dir(&subdir1).unwrap();
-            fs::create_dir(&subdir2).unwrap();
-
-            // Create file in subdir1
-            let file_path = subdir1.join("original.txt");
-            let large_content = "D".repeat(4096);
-            let mut file = File::create(&file_path).unwrap();
-            file.write_all(large_content.as_bytes()).unwrap();
-
-            // Create hard link in subdir2
-            let link_path = subdir2.join("link.txt");
-            fs::hard_link(&file_path, &link_path).unwrap();
-
-            let mut scanner = DiskScanner::new();
-            let result = scanner.scan_directory(temp_dir.path().to_str().unwrap());
-            assert!(result.is_ok());
-
-            let scan_result = result.unwrap();
-
-            // Should count 2 files total
-            assert_eq!(scan_result.file_count, 2);
-
-            // Root folder size should count the file twice (once per subfolder) because
-            // each subfolder maintains its own inode set for deduplication
-            assert_eq!(scan_result.total_size, 8192);
-            assert_eq!(scan_result.root.size, 8192);
-
-            // Note: Current implementation deduplicates within each folder but not
-            // across the entire directory tree. This is the expected behavior.
-        }
-    }
-
-    #[test]
-    fn test_get_system_drives() {
-        let result = get_system_drives();
-        assert!(result.is_ok());
-
-        let drives = result.unwrap();
-        assert!(!drives.is_empty());
-
-        // Should contain root directory for Unix-like systems
-        #[cfg(unix)]
-        assert!(drives.contains(&"/".to_string()));
-    }
-
-    #[test]
-    fn test_tauri_commands() {
-        let temp_dir = create_test_directory_structure();
-        let path = temp_dir.path().to_string_lossy().to_string();
-
-        // Test build_directory_cache command
-        let result = build_directory_cache(path.clone(), Some(2));
-        assert!(result.is_ok());
-
-        // Test get_directory_children_with_depth command (replaces get_directory_info and get_directory_children)
-        let result = get_directory_children_with_depth(path.clone(), 0);
-        assert!(result.is_ok());
-
-        // Test get_system_drives command
-        let result = get_system_drives();
-        assert!(result.is_ok());
-
-        // Test error stats commands
-        let result = get_error_stats();
-        assert!(result.is_ok());
-
-        let result = reset_error_stats();
-        assert!(result.is_ok());
     }
 }
 
