@@ -54,11 +54,13 @@
         "resizable": false,
         "title": "Maka",
         "width": 1200,
-        "decorations": false,
+        "decorations": true,
         "transparent": true,
         "alwaysOnTop": false,
         "skipTaskbar": false,
-        "center": true
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ]
   }

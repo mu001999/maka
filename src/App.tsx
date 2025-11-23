@@ -5,70 +5,13 @@ import {
   ArrowLeft,
   PieChart,
   LayoutGrid,
-  HardDrive,
   AlertCircle,
-  FileText,
-  Folder,
   Copy,
   Check
 } from 'lucide-react'
 import './App.css'
 import SunburstChart from './components/SunburstChart'
 import TreemapChart from './components/TreemapChart'
-
-// Title Bar Component
-const TitleBar = () => {
-  const [isTauri, setIsTauri] = useState(false)
-
-  useEffect(() => {
-    setIsTauri(!!window.__TAURI__)
-  }, [])
-
-  const handleMinimize = async () => {
-    if (isTauri) {
-      try {
-        const { getCurrent } = await import('@tauri-apps/api/window')
-        await getCurrent().minimize()
-      } catch (error) {
-        console.warn('Failed to minimize window:', error)
-      }
-    }
-  }
-
-  const handleMaximize = async () => {
-    if (isTauri) {
-      try {
-        const { getCurrent } = await import('@tauri-apps/api/window')
-        await getCurrent().toggleMaximize()
-      } catch (error) {
-        console.warn('Failed to maximize window:', error)
-      }
-    }
-  }
-
-  const handleClose = async () => {
-    if (isTauri) {
-      try {
-        const { getCurrent } = await import('@tauri-apps/api/window')
-        await getCurrent().close()
-      } catch (error) {
-        console.warn('Failed to close window:', error)
-      }
-    }
-  }
-
-  if (!isTauri) return null
-
-  return (
-    <div className="title-bar" data-tauri-drag-region>
-      <div className="title-bar-controls">
-        <button className="traffic-light close" onClick={handleClose} />
-        <button className="traffic-light minimize" onClick={handleMinimize} />
-        <button className="traffic-light maximize" onClick={handleMaximize} />
-      </div>
-    </div>
-  )
-}
 
 // Wrapper function for Tauri invoke
 async function invoke<T>(cmd: string, args?: any): Promise<T> {
@@ -255,15 +198,13 @@ function App() {
 
   return (
     <div className={`app-container ${isTauri ? 'tauri-active' : ''}`}>
-      <TitleBar />
-
       {/* Sidebar */}
       <div className="sidebar" style={{ paddingTop: isTauri ? '48px' : '16px' }}>
-        <div className="sidebar-header">
-          <div className="app-title flex items-center gap-2">
-            <span>Maka</span>
-          </div>
+        {/* <div className="sidebar-header"> */}
+        <div className="app-title flex items-center gap-2">
+          <span>Maka</span>
         </div>
+        {/* </div> */}
 
         <div className="sidebar-section">
           <div className="section-title">Navigation</div>
@@ -310,7 +251,7 @@ function App() {
         </div>
 
         <div className="sidebar-section">
-          <div className="section-title">Scan Depth: {maxDepth}</div>
+          <div className="section-title">View Depth: {maxDepth}</div>
           <div className="depth-control">
             <input
               type="range"

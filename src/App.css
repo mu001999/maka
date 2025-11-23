@@ -282,7 +282,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--spacing-md);
-  -webkit-app-region: drag;
   border-bottom: 1px solid var(--border-color);
   position: fixed;
   top: 0;
