@@ -8,7 +8,9 @@ import {
   HardDrive,
   AlertCircle,
   FileText,
-  Folder
+  Folder,
+  Copy,
+  Check
 } from 'lucide-react'
 import './App.css'
 import SunburstChart from './components/SunburstChart'
@@ -58,7 +60,7 @@ const TitleBar = () => {
   if (!isTauri) return null
 
   return (
-    <div className="title-bar">
+    <div className="title-bar" data-tauri-drag-region>
       <div className="title-bar-controls">
         <button className="traffic-light close" onClick={handleClose} />
         <button className="traffic-light minimize" onClick={handleMinimize} />
@@ -100,6 +102,17 @@ function App() {
   const [errorStats, setErrorStats] = useState<{ permission_errors: number, not_found_errors: number } | null>(null)
   const [isInitialized, setIsInitialized] = useState<boolean>(false)
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyPath = useCallback(async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy path:', err)
+    }
+  }, [])
 
   useEffect(() => {
     setIsTauri(!!window.__TAURI__)
@@ -233,6 +246,13 @@ function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  const truncateMiddle = (text: string, maxLength: number = 24) => {
+    if (text.length <= maxLength) return text
+    const start = Math.ceil(maxLength / 2)
+    const end = Math.floor(maxLength / 2)
+    return text.slice(0, start) + '...' + text.slice(-end)
+  }
+
   return (
     <div className={`app-container ${isTauri ? 'tauri-active' : ''}`}>
       <TitleBar />
@@ -241,7 +261,6 @@ function App() {
       <div className="sidebar" style={{ paddingTop: isTauri ? '48px' : '16px' }}>
         <div className="sidebar-header">
           <div className="app-title flex items-center gap-2">
-            <HardDrive className="w-6 h-6 text-blue-500" />
             <span>Maka</span>
           </div>
         </div>
@@ -343,7 +362,7 @@ function App() {
             {loading && (
               <div className="loading-overlay">
                 <div className="spinner mb-4"></div>
-                <div className="text-sm text-gray-400">Scanning directory structure...</div>
+                <div className="text-sm text-gray-400">Scanning...</div>
               </div>
             )}
 
@@ -374,24 +393,33 @@ function App() {
 
           {/* Info Panel */}
           <div className="info-sidebar">
-            <div className="info-card">
-              <h3 className="text-lg font-bold mb-4 text-white">Details</h3>
+            <div className="info-card details-card">
               {selectedNode ? (
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    {selectedNode.is_directory ? (
-                      <Folder className="w-8 h-8 text-blue-500" />
-                    ) : (
-                      <FileText className="w-8 h-8 text-gray-400" />
-                    )}
-                    <div className="overflow-hidden">
-                      <div className="font-semibold truncate" title={selectedNode.name}>
-                        {selectedNode.name}
-                      </div>
-                      <div className="text-xs text-gray-400 truncate" title={selectedNode.path}>
-                        {selectedNode.path}
-                      </div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div
+                      className="flex items-center gap-2 cursor-pointer group"
+                      onClick={() => handleCopyPath(selectedNode.path)}
+                      title={`Click to copy: ${selectedNode.path}`}
+                    >
+                      <h3 className="text-lg font-semibold">
+                        {copied ? (
+                          <Check size={16} className="text-green-500" />
+                        ) : (
+                          <Copy size={16} className="text-gray-500 group-hover:text-white transition-colors" />
+                        )}
+                        &nbsp;
+                        {truncateMiddle(selectedNode.name, 20)}
+                      </h3>
+
                     </div>
+                  </div>
+
+                  <div className="stat-item">
+                    <span className="stat-label">Type</span>
+                    <span className="stat-value">
+                      {selectedNode.is_directory ? 'Directory' : 'File'}
+                    </span>
                   </div>
 
                   <div className="stat-item">
@@ -405,13 +433,6 @@ function App() {
                       <span className="stat-value">{selectedNode.children_count || 0}</span>
                     </div>
                   )}
-
-                  <div className="stat-item">
-                    <span className="stat-label">Type</span>
-                    <span className="stat-value">
-                      {selectedNode.is_directory ? 'Directory' : 'File'}
-                    </span>
-                  </div>
                 </div>
               ) : (
                 <div className="text-center text-gray-500 py-8">
@@ -421,36 +442,57 @@ function App() {
             </div>
 
             {selectedNode && selectedNode.children.length > 0 && (
-              <div className="info-card flex-1 overflow-hidden flex flex-col">
+              <div className="info-card items-card">
                 <h3 className="text-sm font-bold mb-3 text-gray-400 uppercase tracking-wider">
                   Top Items
                 </h3>
-                <div className="overflow-y-auto flex-1 pr-2 space-y-2">
-                  {selectedNode.children
-                    .sort((a, b) => b.size - a.size)
-                    .slice(0, 10)
-                    .map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-2 rounded hover:bg-white/5 cursor-pointer transition-colors"
-                        onClick={() => handleNodeClick(item)}
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <div className={`w-2 h-2 rounded-full ${item.is_directory ? 'bg-blue-500' : 'bg-gray-500'}`} />
-                          <span className="text-sm truncate">{item.name}</span>
-                        </div>
-                        <span className="text-xs text-gray-400 whitespace-nowrap">
-                          {formatSize(item.size)}
-                        </span>
-                      </div>
-                    ))}
+                <div className="flex-1 flex flex-col gap-2 min-h-0">
+                  {(() => {
+                    const sortedChildren = [...selectedNode.children].sort((a, b) => b.size - a.size);
+                    const MAX_ITEMS = 9;
+                    const displayItems = sortedChildren.slice(0, MAX_ITEMS);
+                    const remainingItems = sortedChildren.slice(MAX_ITEMS);
+                    const otherSize = remainingItems.reduce((acc, item) => acc + item.size, 0);
+
+                    return (
+                      <>
+                        {displayItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="item-row cursor-default hover:bg-transparent"
+                          >
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${item.is_directory ? 'bg-blue-500' : 'bg-gray-500'}`} />
+                              <span className="text-sm truncate opacity-90" title={item.name}>
+                                {truncateMiddle(item.name, 20)}
+                              </span>
+                            </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
+                              {formatSize(item.size)}
+                            </span>
+                          </div>
+                        ))}
+                        {otherSize > 0 && (
+                          <div className="item-row cursor-default hover:bg-transparent">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="w-2 h-2 rounded-full shrink-0 bg-gray-700" />
+                              <span className="text-sm truncate opacity-90 italic">Other {remainingItems.length} items</span>
+                            </div>
+                            <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
+                              {formatSize(otherSize)}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </div >
   )
 }
 

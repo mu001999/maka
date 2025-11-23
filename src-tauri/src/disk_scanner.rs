@@ -147,24 +147,24 @@ impl DiskScanner {
 
 // New Tauri commands for on-demand loading using rayon for parallel processing
 #[tauri::command]
-pub fn build_cache(path: String) -> Result<(), String> {
+pub async fn build_cache(path: String) -> Result<(), String> {
     // Use rayon parallel processing to build cache
     rayon::scope(|_s| SCANNER.build_cache(&path))
 }
 
 #[tauri::command]
-pub fn get_result_with_depth(path: String, max_depth: u32) -> Result<FileNode, String> {
+pub async fn get_result_with_depth(path: String, max_depth: u32) -> Result<FileNode, String> {
     if let Ok(node) = SCANNER.get_result_with_depth(&path, max_depth) {
         Ok(node)
     } else {
         // Let us try again
-        build_cache(path.clone())?;
+        build_cache(path.clone()).await?;
         SCANNER.get_result_with_depth(&path, max_depth)
     }
 }
 
 #[tauri::command]
-pub fn get_system_drives() -> Result<Vec<String>, String> {
+pub async fn get_system_drives() -> Result<Vec<String>, String> {
     println!("=== [Backend] Tauri command get_system_drives called");
 
     // Use rayon for parallel processing

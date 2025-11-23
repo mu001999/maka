@@ -64,6 +64,7 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
         .append('g')
         .attr('transform', `translate(${size / 2},${size / 2})`);
 
+
       const partition = d3.partition<FileNode>()
         .size([2 * Math.PI, radius]);
 
@@ -95,7 +96,9 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
 
       // 渲染路径
       g.selectAll('path')
-        .data(root.descendants().filter(d => d.data.show))
+        .data(root.descendants().filter(d => {
+          return d.data.show && (d.value || 0) / (root.value || 1) > 0.001;
+        }))
         .enter()
         .append('path')
         .attr('d', arc)
@@ -141,6 +144,16 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
             onNodeClick(d.data);
           }
         });
+
+      // Add center text (after paths so it stays on top)
+      g.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '1.5em')
+        .style('font-weight', 'bold')
+        .style('fill', 'white')
+        .style('pointer-events', 'none') // Prevent interfering with hover
+        .text(formatSize(data.size));
 
       return () => {
         tooltip.remove();

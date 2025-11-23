@@ -6,11 +6,12 @@
   background-color: var(--primary-bg);
   color: var(--text-primary);
   overflow: hidden;
+  border-radius: 12px;
 }
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
+  width: 200px;
   background-color: var(--secondary-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -19,6 +20,18 @@
   gap: var(--spacing-lg);
   z-index: 10;
 }
+
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+/* Removed hover and cursor styles as items are no longer clickable */
 
 .sidebar-header {
   padding: var(--spacing-sm) 0;
@@ -113,8 +126,8 @@
 
 /* Info Panel */
 .info-sidebar {
-  width: 300px;
-  flex: 0 0 300px;
+  width: 350px;
+  flex: 0 0 350px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
@@ -125,6 +138,66 @@
   border-radius: 12px;
   padding: var(--spacing-lg);
   border: 1px solid var(--border-color);
+}
+
+.details-card {
+  flex: 0 0 auto;
+  /* Or fixed height if strictly required, but auto is safer for content */
+  display: flex;
+  flex-direction: column;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.items-card {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.item-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Custom Scrollbar */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.path-display {
+  direction: rtl;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  unicode-bidi: plaintext;
 }
 
 .stat-item {
@@ -153,7 +226,7 @@
 .btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 0.5rem 1rem;
   border-radius: 8px;
   font-weight: 500;
