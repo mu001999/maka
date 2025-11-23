@@ -7,16 +7,16 @@ interface FileNode {
   size: number;
   is_directory: boolean;
   children: FileNode[];
-  inode?: number;
-  children_count?: number;
+  children_count: number;
+  show: boolean;
 }
 
 interface TreemapChartProps {
-  data: FileNode[];
+  data: FileNode | null;
   width?: number;
   height?: number;
   onNodeClick: (node: FileNode) => void;
-  onNodeHover?: (node: FileNode) => void;
+  onNodeHover: (node: FileNode) => void;
 }
 
 const formatSize = (bytes: number): string => {
@@ -38,7 +38,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current || !data || data.length === 0) return;
+    if (!containerRef.current || !data) return;
 
     const renderChart = () => {
       if (!containerRef.current || !svgRef.current) return;
@@ -61,18 +61,8 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
 
       svg.attr('width', chartWidth).attr('height', chartHeight);
 
-      // Filter data to show only immediate children of current path
-      // For current path /A, we want to show only /A/B, not /A/B/C or deeper
-      let displayData = data;
-
-      // Filter out any nested children to ensure we only show one level
-      displayData = data.map(item => ({
-        ...item,
-        children: [] // Remove any nested children to ensure only one level is show
-      }));
-
       // Create hierarchy with filtered data - ONLY immediate children (one layer)
-      const root = d3.hierarchy({ name: 'Current Directory', children: displayData } as unknown as FileNode)
+      const root = d3.hierarchy(data)
         .sum(d => d.size)  // Use size for leaf nodes
         .sort((a, b) => (b.value || 0) - (a.value || 0));
 
@@ -90,12 +80,9 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .attr('class', 'tooltip')
         .style('opacity', 0);
 
-      // Get ONLY immediate children (one layer) - use leaves() to get direct children
-      const nodes = root.leaves() as d3.HierarchyRectangularNode<FileNode>[];
-
       // Create rectangles for each item
       const cells = svg.selectAll('g')
-        .data(nodes)
+        .data(root.descendants().filter(d => d.data.show))
         .enter()
         .append('g')
         .attr('transform', d => `translate(${d.x0 + padding},${d.y0 + padding})`);
@@ -124,7 +111,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
             .style('stroke-width', 3);
 
           // Update selected node in Details panel
-          if (onNodeHover && d.data.path && d.data.name !== 'Current Directory') {
+          if (onNodeHover && d.data.path) {
             onNodeHover(d.data);
           }
 
@@ -158,7 +145,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         })
         .on('click', function (_event, d) {
           // Only trigger onNodeClick for actual file nodes (not the virtual root)
-          if (d.data.path && d.data.name !== 'Current Directory') {
+          if (d.data.path) {
             onNodeClick(d.data);
           }
         });

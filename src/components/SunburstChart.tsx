@@ -7,12 +7,12 @@ interface FileNode {
   size: number;
   is_directory: boolean;
   children: FileNode[];
-  inode?: number;
-  children_count?: number;
+  children_count: number;
+  show: boolean;
 }
 
 interface SunburstChartProps {
-  data: FileNode[];
+  data: FileNode | null;
   onNodeClick: (node: FileNode) => void;
   onNodeHover?: (node: FileNode) => void;
   width?: number;
@@ -39,7 +39,7 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
 
 
   useEffect(() => {
-    if (!containerRef.current || !data || data.length === 0) return;
+    if (!containerRef.current || !data) return;
 
     const renderChart = () => {
       if (!containerRef.current || !svgRef.current) return;
@@ -67,17 +67,8 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
       const partition = d3.partition<FileNode>()
         .size([2 * Math.PI, radius]);
 
-      // Create a virtual root node for the current directory children
-      const virtualRoot: FileNode = {
-        name: 'Current Directory',
-        path: '',
-        size: data.reduce((sum, item) => sum + item.size, 0),
-        is_directory: true,
-        children: data
-      };
-
       // Create hierarchy
-      const root = d3.hierarchy(virtualRoot);
+      const root = d3.hierarchy(data);
 
       // Use backend-provided sizes directly without recalculation
       root.each((node: any) => {
@@ -104,7 +95,7 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
 
       // 渲染路径
       g.selectAll('path')
-        .data(root.descendants())
+        .data(root.descendants().filter(d => d.data.show))
         .enter()
         .append('path')
         .attr('d', arc)
@@ -119,7 +110,7 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
             .style('stroke-width', 3);
 
           // Update selected node in Details panel
-          if (onNodeHover && d.data.path && d.data.name !== 'Current Directory') {
+          if (onNodeHover && d.data.path) {
             onNodeHover(d.data);
           }
 
@@ -146,7 +137,7 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
         })
         .on('click', function (_event: any, d: any) {
           // Only trigger onNodeClick for actual file nodes (not the virtual root)
-          if (d.data.path && d.data.name !== 'Current Directory') {
+          if (d.data.path && d.data.path !== data.path) {
             onNodeClick(d.data);
           }
         });

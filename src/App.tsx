@@ -86,11 +86,12 @@ interface FileNode {
   is_directory: boolean
   children: FileNode[]
   children_count: number
+  show: boolean
 }
 
 function App() {
   const [currentPath, setCurrentPath] = useState<string>('')
-  const [currentData, setCurrentData] = useState<FileNode[]>([])
+  const [currentData, setCurrentData] = useState<FileNode | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'sunburst' | 'treemap'>('sunburst')
@@ -124,12 +125,13 @@ function App() {
         path,
         maxDepth: depth
       })
-      setCurrentData(root_node.children as FileNode[])
       setCurrentPath(path)
+      setCurrentData(root_node)
+      setSelectedNode(root_node)
     } catch (err) {
       setError(`Failed to load directory children: ${err}`)
-      setCurrentData([])
       setCurrentPath(path)
+      setCurrentData(null)
     } finally {
       setLoading(false)
     }
@@ -345,7 +347,7 @@ function App() {
               </div>
             )}
 
-            {!currentData || currentData.length === 0 ? (
+            {!currentData ? (
               <div className="empty-state">
                 <FolderOpen className="empty-icon" />
                 <h3>No Data to Display</h3>
@@ -418,13 +420,13 @@ function App() {
               )}
             </div>
 
-            {currentData && currentData.length > 0 && (
+            {selectedNode && selectedNode.children.length > 0 && (
               <div className="info-card flex-1 overflow-hidden flex flex-col">
                 <h3 className="text-sm font-bold mb-3 text-gray-400 uppercase tracking-wider">
                   Top Items
                 </h3>
                 <div className="overflow-y-auto flex-1 pr-2 space-y-2">
-                  {currentData
+                  {selectedNode.children
                     .sort((a, b) => b.size - a.size)
                     .slice(0, 10)
                     .map((item, idx) => (

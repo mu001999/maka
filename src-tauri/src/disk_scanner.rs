@@ -15,6 +15,7 @@ pub struct FileNode {
     pub is_directory: bool,
     pub children: Vec<FileNode>,
     pub children_count: usize,
+    pub show: bool,
 }
 
 impl FileNode {
@@ -26,9 +27,11 @@ impl FileNode {
             is_directory: self.is_directory,
             children: Vec::new(),
             children_count: self.children_count,
+            show: self.show,
         };
 
         if max_depth == 0 {
+            filtered_node.show = false;
             return filtered_node;
         }
 
@@ -103,6 +106,7 @@ impl DiskScanner {
                 is_directory: true,
                 children,
                 children_count: children_count,
+                show: true,
             })
         } else {
             Ok(FileNode {
@@ -116,6 +120,7 @@ impl DiskScanner {
                 is_directory: false,
                 children: vec![],
                 children_count: 0,
+                show: true,
             })
         }
     }
@@ -133,7 +138,7 @@ impl DiskScanner {
                     }
                 }
 
-                return Ok(current_node.limit_depth(max_depth));
+                return Ok(current_node.limit_depth(max_depth + 1));
             }
         }
         Err("Path not found in cache".to_string())
