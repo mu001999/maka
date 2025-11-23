@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   PieChart,
   LayoutGrid,
-  AlertCircle,
   Copy,
   Check
 } from 'lucide-react'
@@ -42,7 +41,6 @@ function App() {
   const [viewMode, setViewMode] = useState<'sunburst' | 'treemap'>('sunburst')
   const [maxDepth, setMaxDepth] = useState<number>(2)
   const [isTauri, setIsTauri] = useState<boolean>(false)
-  const [errorStats, setErrorStats] = useState<{ permission_errors: number, not_found_errors: number } | null>(null)
   const [isInitialized, setIsInitialized] = useState<boolean>(false)
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   const [copied, setCopied] = useState(false)
@@ -93,15 +91,6 @@ function App() {
     }
   }, [])
 
-  const getErrorStatistics = useCallback(async () => {
-    try {
-      const stats = await invoke<{ permission_errors: number, not_found_errors: number }>('get_error_stats')
-      setErrorStats(stats)
-    } catch (statsError) {
-      console.warn('Failed to get error stats:', statsError)
-    }
-  }, [])
-
   const handleDirectorySelect = useCallback(async () => {
     if (!isTauri) {
       setError('Tauri is not available. Run in Tauri environment.')
@@ -119,12 +108,11 @@ function App() {
       if (selectedPath) {
         await buildCache(selectedPath)
         await loadDirectoryChildrenWithDepth(selectedPath, maxDepth)
-        await getErrorStatistics()
       }
     } catch (err) {
       setError(`Failed to select directory: ${err}`)
     }
-  }, [isTauri, buildCache, loadDirectoryChildrenWithDepth, getErrorStatistics])
+  }, [isTauri, buildCache, loadDirectoryChildrenWithDepth])
 
 
   const handleNodeHover = useCallback((node: FileNode) => {
@@ -135,28 +123,22 @@ function App() {
     setSelectedNode(node)
     if (node.is_directory) {
       await loadDirectoryChildrenWithDepth(node.path, maxDepth)
-      await getErrorStatistics()
     }
-  }, [loadDirectoryChildrenWithDepth, getErrorStatistics, maxDepth])
+  }, [loadDirectoryChildrenWithDepth, maxDepth])
 
   const handleGoBack = useCallback(async () => {
     if (currentPath && currentPath !== '/') {
       const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
       await loadDirectoryChildrenWithDepth(parentPath, maxDepth)
-      await getErrorStatistics()
+
     }
-  }, [currentPath, loadDirectoryChildrenWithDepth, getErrorStatistics])
+  }, [currentPath, loadDirectoryChildrenWithDepth])
 
   const handleRefresh = useCallback(async () => {
     if (currentPath) {
-      try {
-        await invoke('reset_error_stats')
-        setErrorStats({ permission_errors: 0, not_found_errors: 0 })
-      } catch (e) { console.warn(e) }
       await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
-      await getErrorStatistics()
     }
-  }, [currentPath, loadDirectoryChildrenWithDepth, getErrorStatistics])
+  }, [currentPath, loadDirectoryChildrenWithDepth])
 
   // Initial load
   useEffect(() => {
@@ -171,7 +153,6 @@ function App() {
             const rootPath = drives[0]
             await buildCache(rootPath)
             await loadDirectoryChildrenWithDepth(rootPath, maxDepth)
-            await getErrorStatistics()
           }
         } catch (err) {
           setError(`Failed to initialize: ${err}`)
@@ -179,7 +160,7 @@ function App() {
       }
     }
     // initializeApp()
-  }, [isInitialized, buildCache, loadDirectoryChildrenWithDepth, getErrorStatistics])
+  }, [isInitialized, buildCache, loadDirectoryChildrenWithDepth])
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
@@ -198,8 +179,9 @@ function App() {
 
   return (
     <div className={`app-container ${isTauri ? 'tauri-active' : ''}`}>
+      {isTauri && <div className="titlebar-drag-region" data-tauri-drag-region />}
       {/* Sidebar */}
-      <div className="sidebar" style={{ paddingTop: isTauri ? '48px' : '16px' }}>
+      <div className="sidebar" style={{ paddingTop: isTauri ? '52px' : '16px' }}>
         {/* <div className="sidebar-header"> */}
         <div className="app-title flex items-center gap-2">
           <span>Maka</span>
@@ -263,25 +245,11 @@ function App() {
                 if (currentPath) {
                   await buildCache(currentPath)
                   await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
-                  await getErrorStatistics()
                 }
               }}
             />
           </div>
         </div>
-
-        {errorStats && (errorStats.permission_errors > 0 || errorStats.not_found_errors > 0) && (
-          <div className="error-banner">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertCircle size={16} />
-              <span className="font-semibold">Scan Issues</span>
-            </div>
-            <div className="text-xs opacity-80">
-              {errorStats.permission_errors > 0 && <div>Permission denied: {errorStats.permission_errors}</div>}
-              {errorStats.not_found_errors > 0 && <div>Not found: {errorStats.not_found_errors}</div>}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main Content */}

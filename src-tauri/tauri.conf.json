@@ -36,6 +36,9 @@
       },
       "path": {
         "all": true
+      },
+      "window": {
+        "startDragging": true
       }
     },
     "bundle": {

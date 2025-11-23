@@ -74,7 +74,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--spacing-xl);
-  border-bottom: 1px solid var(--border-color);
+  /* border-bottom: 1px solid var(--border-color); */
   background-color: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(8px);
 }
@@ -90,7 +90,9 @@
 
 .visualization-area {
   flex: 1;
-  padding: var(--spacing-xl);
+  /* padding-bottom: var(--spacing-xl); */
+  padding-right: var(--spacing-xl);
+  padding-bottom: var(--spacing-xl);
   overflow: hidden;
   display: flex;
   gap: var(--spacing-lg);
@@ -101,9 +103,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: var(--secondary-bg);
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
+  /* background-color: var(--secondary-bg); */
+  /* border-radius: 16px; */
+  /* border: 1px solid var(--border-color); */
   overflow: hidden;
   position: relative;
   min-width: 0;
@@ -388,4 +390,16 @@
   justify-content: center;
   align-items: center;
   overflow: hidden;
+}
+
+/* Title Bar Drag Region */
+.titlebar-drag-region {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  /* Matches standard title bar height */
+  z-index: 9999;
+  /* background: rgba(255, 0, 0, 0.1); Debugging */
 }
