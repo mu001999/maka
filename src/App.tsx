@@ -168,6 +168,11 @@ function App() {
     }
   }, [isTauri, buildCache, loadDirectoryChildrenWithDepth, getErrorStatistics])
 
+
+  const handleNodeHover = useCallback((node: FileNode) => {
+    setSelectedNode(node)
+  }, [])
+
   const handleNodeClick = useCallback(async (node: FileNode) => {
     setSelectedNode(node)
     if (node.is_directory) {
@@ -349,9 +354,17 @@ function App() {
             ) : (
               <div className="chart-view">
                 {viewMode === 'sunburst' ? (
-                  <SunburstChart data={currentData} onNodeClick={handleNodeClick} />
+                  <SunburstChart
+                    data={currentData}
+                    onNodeClick={handleNodeClick}
+                    onNodeHover={handleNodeHover}
+                  />
                 ) : (
-                  <TreemapChart data={currentData} onNodeClick={handleNodeClick} />
+                  <TreemapChart
+                    data={currentData}
+                    onNodeClick={handleNodeClick}
+                    onNodeHover={handleNodeHover}
+                  />
                 )}
               </div>
             )}

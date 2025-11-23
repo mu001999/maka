@@ -16,6 +16,7 @@ interface TreemapChartProps {
   width?: number;
   height?: number;
   onNodeClick: (node: FileNode) => void;
+  onNodeHover?: (node: FileNode) => void;
 }
 
 const formatSize = (bytes: number): string => {
@@ -31,6 +32,7 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
   width,
   height,
   onNodeClick,
+  onNodeHover,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,6 +122,11 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
             .style('opacity', 1)
             .style('stroke', '#2c3e50')
             .style('stroke-width', 3);
+
+          // Update selected node in Details panel
+          if (onNodeHover && d.data.path && d.data.name !== 'Current Directory') {
+            onNodeHover(d.data);
+          }
 
           tooltip.transition()
             .duration(200)

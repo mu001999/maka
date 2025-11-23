@@ -14,11 +14,12 @@ interface FileNode {
 interface SunburstChartProps {
   data: FileNode[];
   onNodeClick: (node: FileNode) => void;
+  onNodeHover?: (node: FileNode) => void;
   width?: number;
   height?: number;
 }
 
-const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width, height }) => {
+const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNodeHover, width, height }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +117,11 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, width,
           d3.select(this)
             .style('opacity', 1)
             .style('stroke-width', 3);
+
+          // Update selected node in Details panel
+          if (onNodeHover && d.data.path && d.data.name !== 'Current Directory') {
+            onNodeHover(d.data);
+          }
 
           tooltip.transition()
             .duration(200)
