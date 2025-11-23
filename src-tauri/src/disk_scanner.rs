@@ -19,6 +19,7 @@ pub struct FileNode {
     pub is_directory: bool,
     pub children: Vec<FileNode>,
     pub inode: Option<u64>,
+    pub children_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -446,6 +447,14 @@ impl DiskScanner {
                                 }
                             };
 
+                            // Get actual children count from cache if available
+                            let actual_children_count = if let Some(ref cache_map) = *DIRECTORY_CACHE.read().unwrap() {
+                                cache_map.get(&entry_path.to_string_lossy().to_string())
+                                    .map(|info| info.children_count)
+                            } else {
+                                None
+                            };
+
                             Some(FileNode {
                                 name,
                                 path: entry_path.to_string_lossy().to_string(),
@@ -453,6 +462,7 @@ impl DiskScanner {
                                 is_directory: true,
                                 children, // 只包含请求深度的子项
                                 inode: self.get_inode(&metadata),
+                                children_count: actual_children_count,
                             })
                         } else {
                             let file_size = metadata.len();
@@ -467,6 +477,7 @@ impl DiskScanner {
                                 is_directory: false,
                                 children: vec![],
                                 inode: self.get_inode(&metadata),
+                                children_count: None,
                             })
                         }
                     }
