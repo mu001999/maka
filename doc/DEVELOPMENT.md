@@ -71,8 +71,6 @@ src/
 ├── components/          # 可复用组件
 │   ├── SunburstChart.tsx
 │   └── TreemapChart.tsx
-├── hooks/               # 自定义 Hooks (如需要)
-├── utils/               # 工具函数
 └── types/               # TypeScript 类型定义
 ```
 
@@ -81,9 +79,8 @@ src/
 src-tauri/src/
 ├── main.rs              # 主入口和命令定义
 ├── disk_scanner.rs      # 磁盘扫描核心逻辑
-├── permissions.rs       # 权限管理
-├── error.rs            # 错误处理 (如需要)
-└── utils.rs            # 工具函数 (如需要)
+├── disk_scanner_tests.rs # 单元测试
+└── permissions.rs       # 权限管理
 ```
 
 ### 编码规范
@@ -94,13 +91,13 @@ src-tauri/src/
 export const SunburstChart: React.FC<Props> = ({ data }) => {
   // 使用 Hooks
   const [state, setState] = useState(initialState);
-  
+
   // 副作用处理
   useEffect(() => {
     // 清理函数
     return () => { /* cleanup */ };
   }, [dependencies]);
-  
+
   return <div>{/* JSX */}</div>;
 };
 ```
@@ -117,7 +114,7 @@ impl DiskScanner {
     pub fn new() -> Self {
         // 实现
     }
-    
+
     pub fn build_directory_cache(&mut self, path: &str, max_depth: usize) -> Result<String, Error> {
         // 错误处理
         match fs::read_dir(path) {
@@ -152,7 +149,7 @@ impl DiskScanner {
 1. **Rust 日志**
    ```rust
    use log::{info, warn, error};
-   
+
    info!("Scanning directory: {}", path);
    warn!("Large directory detected: {}", path);
    error!("Failed to read directory: {}", e);
@@ -166,7 +163,7 @@ impl DiskScanner {
 3. **性能分析**
    ```rust
    use std::time::Instant;
-   
+
    let start = Instant::now();
    // 操作
    let duration = start.elapsed();

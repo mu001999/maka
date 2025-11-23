@@ -12,7 +12,7 @@
 
 #### `test_get_directory_children_root_path`
 - **目的**: 验证根目录子项获取的正确性
-- **验证内容**: 
+- **验证内容**:
   - 返回正确数量的子项
   - 子项包含预期的文件和目录
   - 文件大小信息正确
@@ -45,7 +45,7 @@
   - 所有层级的文件和目录都正确包含
   - 深度限制的边界情况处理
 
-#### `test_get_directory_info_accuracy`
+#### `test_get_directory_children_with_depth_accuracy`
 - **目的**: 验证目录信息获取的准确性
 - **验证内容**:
   - 目录名称、路径信息正确
@@ -66,11 +66,28 @@
   - 空目录的信息获取不报错
   - 正确处理边界情况
 
-#### `test_nonexistent_path_errors`
-- **目的**: 验证不存在路径的错误处理
+#### `test_directory_size_calculation_with_nested_structure`
+- **目的**: 验证嵌套结构的目录大小计算
 - **验证内容**:
-  - 对不存在路径返回适当的错误信息
-  - 错误处理不会导致程序崩溃
+  - 正确计算包含多层子目录的目录大小
+  - 验证父目录大小等于所有子项大小之和
+
+#### `test_directory_size_calculation_single_level`
+- **目的**: 验证单层目录大小计算
+- **验证内容**:
+  - 正确计算单层目录下的文件总大小
+
+#### `test_directory_size_with_empty_subdirectories`
+- **目的**: 验证包含空子目录的大小计算
+- **验证内容**:
+  - 空子目录大小为0
+  - 不影响父目录大小计算
+
+#### `test_max_depth_zero_returns_only_files`
+- **目的**: 验证深度为0时的行为
+- **验证内容**:
+  - 只返回文件，不返回子目录
+  - 但仍正确计算包含子目录的总大小
 
 #### `test_file_path_errors`
 - **目的**: 验证文件路径的错误处理

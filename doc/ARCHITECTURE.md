@@ -68,7 +68,7 @@
 
 #### App.tsx
 - **职责**: 主应用组件，状态管理中心
-- **功能**: 
+- **功能**:
   - 管理应用状态 (currentData, loading, error)
   - 处理用户交互事件
   - 协调组件间通信
@@ -101,21 +101,26 @@
 - **核心结构**:
   ```rust
   pub struct DiskScanner {
-      cache: Arc<Mutex<HashMap<String, Vec<FileInfo>>>>,
+      seen_inodes: Arc<DashMap<(u64, u64), bool>>,
+      max_depth: Option<usize>,
+      cache: Arc<DashMap<String, DirectoryInfo>>,
+      permission_errors: Arc<AtomicUsize>,
+      not_found_errors: Arc<AtomicUsize>,
   }
-  
-  pub struct FileInfo {
+
+  pub struct FileNode {
       pub name: String,
       pub path: String,
       pub size: u64,
       pub is_directory: bool,
-      pub children: Option<Vec<FileInfo>>,
+      pub children: Vec<FileNode>,
+      pub inode: Option<u64>,
   }
   ```
 
 - **关键功能**:
   - 并行目录扫描 (使用 `rayon`)
-  - 智能缓存机制
+  - 智能缓存机制 (使用 `DashMap` 和 `once_cell`)
   - 系统目录过滤
   - 错误处理和重试
 

@@ -131,10 +131,7 @@ const stats = await invoke('get_error_stats');
 
 **返回值**:
 ```typescript
-{
-  permission_errors: number, // 权限错误数量
-  not_found_errors: number  // 文件未找到错误数量
-}
+[number, number] // [permission_errors, not_found_errors]
 ```
 
 **错误处理**:
