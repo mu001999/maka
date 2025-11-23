@@ -1,10 +1,10 @@
 [package]
 name = "maka"
 version = "0.1.0"
-description = "A disk usage visualization tool inspired by DaisyDisk"
-authors = ["you"]
-license = ""
-repository = ""
+description = "A disk usage visualization tool"
+authors = ["mu001999"]
+license = "MIT"
+repository = "https://github.com/mu001999/maka"
 edition = "2021"
 
 [build-dependencies]
