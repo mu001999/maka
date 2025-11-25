@@ -68,7 +68,8 @@ function App() {
 
   const checkDiskAccess = async () => {
     try {
-      const hasAccess = await invoke<boolean>('request_disk_access')
+      const { checkFullDiskAccessPermission } = await import('tauri-plugin-macos-permissions-api')
+      const hasAccess = await checkFullDiskAccessPermission()
       setHasDiskAccess(hasAccess)
     } catch (err) {
       console.error('Failed to check disk access:', err)
@@ -77,7 +78,8 @@ function App() {
 
   const handleOpenPrivacy = async () => {
     try {
-      await invoke('open_privacy_settings')
+      const { requestFullDiskAccessPermission } = await import('tauri-plugin-macos-permissions-api')
+      await requestFullDiskAccessPermission()
     } catch (err) {
       console.error('Failed to open privacy settings:', err)
     }
@@ -117,7 +119,8 @@ function App() {
 
   const handleDirectorySelect = useCallback(async () => {
     try {
-      const hasAccess = await invoke<boolean>('request_disk_access')
+      const { checkFullDiskAccessPermission } = await import('tauri-plugin-macos-permissions-api')
+      const hasAccess = await checkFullDiskAccessPermission()
       setHasDiskAccess(hasAccess)
       if (!hasAccess) {
         setError('Disk access denied. Please grant Full Disk Access.')

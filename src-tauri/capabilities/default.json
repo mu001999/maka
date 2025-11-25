@@ -10,6 +10,7 @@
         "core:window:default",
         "core:window:allow-start-dragging",
         "core:path:default",
-        "core:event:default"
+        "core:event:default",
+        "macos-permissions:default"
     ]
 }
