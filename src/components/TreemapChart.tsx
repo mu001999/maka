@@ -132,6 +132,11 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .style('stroke-width', 1)
         .style('cursor', 'pointer')
         .style('opacity', 0.8)
+        .attr('draggable', 'true')
+        .on('dragstart', function (event: any, d: any) {
+          event.dataTransfer.setData('application/json', JSON.stringify(d.data));
+          event.dataTransfer.effectAllowed = 'copy';
+        })
         .on('mouseover', function (event, d) {
           d3.select(this)
             .style('opacity', 1)

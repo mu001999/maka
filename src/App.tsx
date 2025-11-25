@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   FolderOpen,
   RefreshCw,
@@ -6,7 +6,12 @@ import {
   PieChart,
   LayoutGrid,
   Copy,
-  Check
+  Check,
+  Trash2,
+  AlertTriangle,
+  X,
+  ShieldAlert,
+  File
 } from 'lucide-react'
 import './App.css'
 import SunburstChart from './components/SunburstChart'
@@ -43,6 +48,10 @@ function App() {
   const [isTauri, setIsTauri] = useState<boolean>(false)
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   const [copied, setCopied] = useState(false)
+  const [hasDiskAccess, setHasDiskAccess] = useState<boolean | null>(null)
+  const [itemsToDelete, setItemsToDelete] = useState<FileNode[]>([])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -56,7 +65,27 @@ function App() {
 
   useEffect(() => {
     setIsTauri(!!window.__TAURI__)
+    if (window.__TAURI__) {
+      checkDiskAccess()
+    }
   }, [])
+
+  const checkDiskAccess = async () => {
+    try {
+      const hasAccess = await invoke<boolean>('request_disk_access')
+      setHasDiskAccess(hasAccess)
+    } catch (err) {
+      console.error('Failed to check disk access:', err)
+    }
+  }
+
+  const handleOpenPrivacy = async () => {
+    try {
+      await invoke('open_privacy_settings')
+    } catch (err) {
+      console.error('Failed to open privacy settings:', err)
+    }
+  }
 
   const buildCache = useCallback(async (path: string) => {
     setLoading(true)
@@ -98,6 +127,7 @@ function App() {
 
     try {
       const hasAccess = await invoke<boolean>('request_disk_access')
+      setHasDiskAccess(hasAccess)
       if (!hasAccess) {
         setError('Disk access denied. Please grant Full Disk Access.')
         return
@@ -137,7 +167,58 @@ function App() {
     if (currentPath) {
       await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
     }
-  }, [currentPath, loadDirectoryChildrenWithDepth])
+  }, [currentPath, loadDirectoryChildrenWithDepth, maxDepth])
+
+  const handleBreadcrumbClick = async (path: string) => {
+    await loadDirectoryChildrenWithDepth(path, maxDepth)
+  }
+
+  // Delete Zone Handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDraggingOver(false)
+    try {
+      const nodeData = JSON.parse(e.dataTransfer.getData('application/json')) as FileNode
+      if (!itemsToDelete.some(item => item.path === nodeData.path)) {
+        setItemsToDelete(prev => [...prev, nodeData])
+      }
+    } catch (err) {
+      console.error('Failed to parse dropped item:', err)
+    }
+  }
+
+  const handleRemoveFromDeleteList = (path: string) => {
+    setItemsToDelete(prev => prev.filter(item => item.path !== path))
+  }
+
+  const handleConfirmDelete = async () => {
+    try {
+      setLoading(true)
+      const paths = itemsToDelete.map(item => item.path)
+      await invoke('delete_items', { paths })
+      setItemsToDelete([])
+      setShowDeleteConfirm(false)
+      // Refresh current view
+      if (currentPath) {
+        await buildCache(currentPath)
+        await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
+      }
+    } catch (err) {
+      setError(`Failed to delete items: ${err}`)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
@@ -157,6 +238,20 @@ function App() {
   return (
     <div className={`app-container ${isTauri ? 'tauri-active' : ''}`}>
       {isTauri && <div className="titlebar-drag-region" data-tauri-drag-region />}
+
+      {/* Permission Banner */}
+      {isTauri && hasDiskAccess === false && (
+        <div className="permission-banner">
+          <ShieldAlert className="text-yellow-500" size={20} />
+          <div className="flex-1">
+            <p className="font-bold">Full Disk Access Required</p>
+            <p className="text-sm opacity-90">Maka needs permission to scan your disk accurately.</p>
+          </div>
+          <button onClick={handleOpenPrivacy} className="btn-small">
+            Open Settings
+          </button>
+        </div>
+      )}
       {/* Sidebar */}
       <div className="sidebar" style={{ paddingTop: isTauri ? '52px' : '16px' }}>
         {/* <div className="sidebar-header"> */}
@@ -227,13 +322,130 @@ function App() {
             />
           </div>
         </div>
+
+        {/* Delete Zone */}
+        <div className="sidebar-section flex-1 min-h-0 flex flex-col">
+          <div className="section-title flex justify-between items-center">
+            <span>Delete Zone</span>
+            {itemsToDelete.length > 0 && (
+              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
+                {itemsToDelete.length}
+              </span>
+            )}
+          </div>
+          <div
+            className={`delete-zone ${isDraggingOver ? 'drag-over' : ''} ${itemsToDelete.length > 0 ? 'has-items' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {itemsToDelete.length === 0 ? (
+              <div className="delete-placeholder">
+                <Trash2 size={24} className="mb-2 opacity-50" />
+                <p className="text-xs text-center opacity-70">
+                  Drag items here to delete
+                </p>
+              </div>
+            ) : (
+              <div className="delete-list">
+                {itemsToDelete.map(item => (
+                  <div key={item.path} className="delete-item">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      {item.is_directory ? <FolderOpen size={12} /> : <File size={12} />}
+                      <span className="truncate text-xs" title={item.path}>{item.name}</span>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFromDeleteList(item.path)}
+                      className="delete-item-remove"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {itemsToDelete.length > 0 && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="btn btn-danger mt-2 w-full"
+              >
+                <Trash2 size={14} />
+                Delete All
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <AlertTriangle className="text-red-500" size={24} />
+              <h3>Confirm Deletion</h3>
+            </div>
+            <p className="mb-4">
+              Are you sure you want to permanently delete {itemsToDelete.length} items?
+              This action cannot be undone.
+            </p>
+            <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded mb-4 text-xs font-mono">
+              {itemsToDelete.map(item => (
+                <div key={item.path} className="truncate">{item.path}</div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="btn btn-danger"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="main-content" style={{ paddingTop: isTauri ? '32px' : '0' }}>
         <div className="content-header">
           <div className="path-breadcrumb" title={currentPath}>
-            {currentPath || 'No directory selected'}
+            {!currentPath ? 'No directory selected' : (
+              <div className="flex items-center flex-wrap">
+                {currentPath.split('/').map((segment, index, array) => {
+                  if (segment === '' && index === 0) return (
+                    <span
+                      key={index}
+                      className="breadcrumb-segment cursor-pointer hover:text-white hover:underline"
+                      onClick={() => handleBreadcrumbClick('/')}
+                    >
+                      /
+                    </span>
+                  );
+                  if (segment === '') return null;
+
+                  const path = array.slice(0, index + 1).join('/') || '/';
+                  return (
+                    <React.Fragment key={index}>
+                      {index > 1 && '/'}
+                      <span
+                        className="breadcrumb-segment cursor-pointer hover:text-white hover:underline"
+                        onClick={() => handleBreadcrumbClick(path)}
+                      >
+                        {segment}
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

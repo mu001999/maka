@@ -108,6 +108,11 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
         .style('stroke-width', 2)
         .style('cursor', 'pointer')
         .style('opacity', 0.8)
+        .attr('draggable', 'true')
+        .on('dragstart', function (event: any, d: any) {
+          event.dataTransfer.setData('application/json', JSON.stringify(d.data));
+          event.dataTransfer.effectAllowed = 'copy';
+        })
         .on('mouseover', function (event: any, d: any) {
           d3.select(this)
             .style('opacity', 1)

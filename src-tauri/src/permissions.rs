@@ -1,5 +1,4 @@
 use std::process::Command;
-use tauri::api::dialog;
 
 #[tauri::command]
 pub async fn request_disk_access() -> Result<bool, String> {
@@ -11,30 +10,24 @@ pub async fn request_disk_access() -> Result<bool, String> {
             Ok(false) => {}
             Err(e) => return Err(e),
         }
-
-        // Request access by opening system preferences
-        let message = "Maka needs Full Disk Access to scan your files.\n\nSome directories may not be accessible without this permission.\n\nPlease:\n1. Click 'Open System Preferences'\n2. Click the lock and enter your password\n3. Check the box next to Maka\n4. Restart the app";
-
-        dialog::ask(
-            None as Option<&tauri::Window<tauri::Wry>>,
-            "Full Disk Access Required",
-            message,
-            move |answer| {
-                if answer {
-                    // Open System Preferences > Security & Privacy > Privacy > Full Disk Access
-                    let _ = Command::new("open")
-                        .args(&["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
-                        .spawn();
-                }
-            },
-        );
-
         Ok(false)
     }
     #[cfg(not(target_os = "macos"))]
     {
         Ok(true) // Assume access on non-macOS systems
     }
+}
+
+#[tauri::command]
+pub async fn open_privacy_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = Command::new("open")
+            .args(&["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -75,23 +68,21 @@ pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, 
 fn check_full_disk_access() -> Result<bool, String> {
     use std::fs;
 
-    // Try to access a protected directory
-    let test_paths = vec![
-        "/Library/Application Support/com.apple.TCC",
-        "/Users",
-        "/System",
-    ];
+    // We only check the TCC database directory which is the most reliable indicator
+    // for Full Disk Access on modern macOS
+    let path = "/Library/Application Support/com.apple.TCC";
 
-    for path in test_paths {
-        match fs::metadata(path) {
-            Ok(_) => return Ok(true),
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    continue;
-                }
+    match fs::metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                Ok(false)
+            } else {
+                // If it's another error (like NotFound), we might be on an older OS or weird state
+                // but usually this means we can't verify, so we assume false or let it pass?
+                // Safest is to return false if we can't verify.
+                Ok(false)
             }
         }
     }
-
-    Ok(false)
 }

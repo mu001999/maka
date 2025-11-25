@@ -403,3 +403,159 @@
   z-index: 9999;
   /* background: rgba(255, 0, 0, 0.1); Debugging */
 }
+
+/* Permission Banner */
+.permission-banner {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background-color: rgba(30, 41, 59, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  width: 90%;
+  max-width: 600px;
+}
+
+.btn-small {
+  padding: 4px 12px;
+  border-radius: 4px;
+  background-color: var(--accent-color);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-small:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Breadcrumbs */
+.breadcrumb-segment {
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.breadcrumb-segment:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* Delete Zone */
+.delete-zone {
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.2);
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  min-height: 100px;
+}
+
+.delete-zone.drag-over {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: var(--error-color);
+}
+
+.delete-zone.has-items {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-style: solid;
+}
+
+.delete-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.delete-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.delete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.delete-item-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-item-remove:hover {
+  color: var(--error-color);
+}
+
+.btn-danger {
+  background-color: rgba(239, 68, 68, 0.8);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: rgb(239, 68, 68);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}

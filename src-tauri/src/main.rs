@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+mod disk_ops;
 mod disk_scanner;
 mod permissions;
 
@@ -13,7 +14,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_system_drives,
             permissions::request_disk_access,
+            permissions::open_privacy_settings,
             permissions::select_directory,
+            disk_ops::delete_items,
             build_cache,
             get_result_with_depth,
         ])
