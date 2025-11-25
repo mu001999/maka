@@ -20,7 +20,7 @@ import TreemapChart from './components/TreemapChart'
 // Wrapper function for Tauri invoke
 async function invoke<T>(cmd: string, args?: any): Promise<T> {
   try {
-    const { invoke: tauriInvoke } = await import('@tauri-apps/api/tauri')
+    const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
     return await tauriInvoke<T>(cmd, args)
   } catch (error) {
     console.error(`=== [Frontend] Error invoking Tauri command ${cmd}:`, error)
@@ -45,7 +45,6 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'sunburst' | 'treemap'>('sunburst')
   const [maxDepth, setMaxDepth] = useState<number>(2)
-  const [isTauri, setIsTauri] = useState<boolean>(false)
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   const [copied, setCopied] = useState(false)
   const [hasDiskAccess, setHasDiskAccess] = useState<boolean | null>(null)
@@ -64,10 +63,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setIsTauri(!!window.__TAURI__)
-    if (window.__TAURI__) {
-      checkDiskAccess()
-    }
+    checkDiskAccess()
   }, [])
 
   const checkDiskAccess = async () => {
@@ -120,11 +116,6 @@ function App() {
   }, [])
 
   const handleDirectorySelect = useCallback(async () => {
-    if (!isTauri) {
-      setError('Tauri is not available. Run in Tauri environment.')
-      return
-    }
-
     try {
       const hasAccess = await invoke<boolean>('request_disk_access')
       setHasDiskAccess(hasAccess)
@@ -141,7 +132,7 @@ function App() {
     } catch (err) {
       setError(`Failed to select directory: ${err}`)
     }
-  }, [isTauri, buildCache, loadDirectoryChildrenWithDepth])
+  }, [buildCache, loadDirectoryChildrenWithDepth])
 
 
   const handleNodeHover = useCallback((node: FileNode) => {
@@ -236,11 +227,11 @@ function App() {
   }
 
   return (
-    <div className={`app-container ${isTauri ? 'tauri-active' : ''}`}>
-      {isTauri && <div className="titlebar-drag-region" data-tauri-drag-region />}
+    <div className={`app-container`}>
+      {<div className="titlebar-drag-region" data-tauri-drag-region />}
 
       {/* Permission Banner */}
-      {isTauri && hasDiskAccess === false && (
+      {hasDiskAccess === false && (
         <div className="permission-banner">
           <ShieldAlert className="text-yellow-500" size={20} />
           <div className="flex-1">
@@ -253,7 +244,7 @@ function App() {
         </div>
       )}
       {/* Sidebar */}
-      <div className="sidebar" style={{ paddingTop: isTauri ? '52px' : '16px' }}>
+      <div className="sidebar" style={{ paddingTop: '52px' }}>
         {/* <div className="sidebar-header"> */}
         <div className="app-title flex items-center gap-2">
           <span>Maka</span>
@@ -414,7 +405,7 @@ function App() {
       )}
 
       {/* Main Content */}
-      <div className="main-content" style={{ paddingTop: isTauri ? '32px' : '0' }}>
+      <div className="main-content" style={{ paddingTop: '32px' }}>
         <div className="content-header">
           <div className="path-breadcrumb" title={currentPath}>
             {!currentPath ? 'No directory selected' : (

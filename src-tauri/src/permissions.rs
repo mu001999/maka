@@ -31,37 +31,20 @@ pub async fn open_privacy_settings() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn select_directory(_window: tauri::Window) -> Result<Option<String>, String> {
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
-    use tauri::api::dialog::FileDialogBuilder;
+pub async fn select_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::{DialogExt, FilePath};
 
-    let result = Arc::new(Mutex::new(None));
-    let result_clone = result.clone();
-
-    // Use the async dialog API
-    FileDialogBuilder::new()
+    let file_path = app
+        .dialog()
+        .file()
         .set_title("Select a Directory to Scan")
         .set_directory("/")
-        .pick_folder(move |path| {
-            let path_str = path.map(|p| p.to_string_lossy().to_string());
-            println!("=== [Backend] Directory selection result: {:?}", path_str);
-            *result_clone.lock().unwrap() = path_str;
-        });
+        .blocking_pick_folder();
 
-    // Wait for the dialog to complete (with timeout)
-    let start = Instant::now();
-    while start.elapsed().as_secs() < 60 {
-        // 60 second timeout
-        std::thread::sleep(Duration::from_millis(100));
-        let result_guard = result.lock().unwrap();
-        if result_guard.is_some() {
-            return Ok(result_guard.clone());
-        }
-        drop(result_guard);
-    }
-
-    Ok(None)
+    Ok(file_path.map(|p| match p {
+        FilePath::Path(path_buf) => path_buf.to_string_lossy().to_string(),
+        FilePath::Url(url) => url.to_string(),
+    }))
 }
 
 #[cfg(target_os = "macos")]

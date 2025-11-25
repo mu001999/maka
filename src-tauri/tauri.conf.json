@@ -1,76 +1,46 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Maka",
+  "version": "0.1.0",
+  "identifier": "com.maka.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:1420",
-    "distDir": "../dist",
-    "withGlobalTauri": true
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "Maka",
-    "version": "0.1.0"
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": false,
-        "open": true,
-        "save": true
-      },
-      "fs": {
-        "all": true,
-        "readFile": true,
-        "writeFile": true,
-        "readDir": true,
-        "copyFile": true,
-        "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
-        "renameFile": true,
-        "exists": true
-      },
-      "path": {
-        "all": true
-      },
-      "window": {
-        "startDragging": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.maka.app",
-      "targets": "all"
-    },
-    "security": {
-      "csp": null
-    },
+  "app": {
     "windows": [
       {
-        "fullscreen": false,
-        "height": 800,
-        "resizable": false,
         "title": "Maka",
         "width": 1200,
+        "height": 800,
+        "resizable": false,
+        "center": true,
+        "fullscreen": false,
         "decorations": true,
         "transparent": true,
         "alwaysOnTop": false,
         "skipTaskbar": false,
-        "center": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
-    ]
-  }
+    ],
+    "security": {
+      "csp": null
+    },
+    "macOSPrivateApi": true
+  },
+  "plugins": {}
 }

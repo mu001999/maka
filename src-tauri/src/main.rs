@@ -11,6 +11,8 @@ use disk_scanner::{build_cache, get_result_with_depth, get_system_drives};
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_system_drives,
             permissions::request_disk_access,
