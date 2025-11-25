@@ -77,6 +77,45 @@ impl DiskScanner {
                 }
             };
 
+            // Skip /Volumes and /System/Volumes on macOS
+            #[cfg(target_os = "macos")]
+            if path.to_string_lossy() == "/Volumes" || path.to_string_lossy() == "/System/Volumes" {
+                return Ok(FileNode {
+                    name: path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    size: 0,
+                    is_directory: true,
+                    children: vec![],
+                    children_count: 0,
+                    show: true,
+                });
+            }
+
+            // Skip /proc, /sys, /dev on Linux
+            #[cfg(target_os = "linux")]
+            {
+                let path_str = path.to_string_lossy();
+                if path_str == "/proc" || path_str == "/sys" || path_str == "/dev" {
+                    return Ok(FileNode {
+                        name: path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+                        path: path_str.to_string(),
+                        size: 0,
+                        is_directory: true,
+                        children: vec![],
+                        children_count: 0,
+                        show: true,
+                    });
+                }
+            }
+
             // Use rayon for parallel processing of directory entries
             let mut children: Vec<FileNode> = entries
                 .par_bridge() // Convert to parallel iterator
@@ -98,9 +137,8 @@ impl DiskScanner {
             Ok(FileNode {
                 name: path
                     .file_name()
-                    .expect("Failed to get file name")
-                    .to_string_lossy()
-                    .to_string(),
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "/".to_string()),
                 path: path.to_string_lossy().to_string(),
                 size: size,
                 is_directory: true,
