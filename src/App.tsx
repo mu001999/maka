@@ -48,6 +48,7 @@ function App() {
   const [selectedNode, setSelectedNode] = useState<FileNode | null>(null)
   const [copied, setCopied] = useState(false)
   const [hasDiskAccess, setHasDiskAccess] = useState<boolean | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
   const [itemsToDelete, setItemsToDelete] = useState<FileNode[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDraggingOver, setIsDraggingOver] = useState(false)
@@ -63,6 +64,11 @@ function App() {
   }, [])
 
   useEffect(() => {
+    // Check if banner was previously dismissed
+    const dismissed = localStorage.getItem('maka_fda_banner_dismissed')
+    if (dismissed === 'true') {
+      setBannerDismissed(true)
+    }
     checkDiskAccess()
   }, [])
 
@@ -74,6 +80,11 @@ function App() {
     } catch (err) {
       console.error('Failed to check disk access:', err)
     }
+  }
+
+  const handleDismissBanner = () => {
+    setBannerDismissed(true)
+    localStorage.setItem('maka_fda_banner_dismissed', 'true')
   }
 
   const handleOpenPrivacy = async () => {
@@ -271,7 +282,7 @@ function App() {
       {<div className="titlebar-drag-region" data-tauri-drag-region />}
 
       {/* Permission Banner */}
-      {hasDiskAccess === false && (
+      {hasDiskAccess === false && !bannerDismissed && (
         <div className="permission-banner">
           <ShieldAlert className="text-yellow-500" size={20} />
           <div className="flex-1">
@@ -280,6 +291,9 @@ function App() {
           </div>
           <button onClick={handleOpenPrivacy} className="btn-small">
             Open Settings
+          </button>
+          <button onClick={handleDismissBanner} className="btn-small-secondary" title="Don't show again">
+            <X size={16} />
           </button>
         </div>
       )}
