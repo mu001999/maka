@@ -94,10 +94,11 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
         .attr('class', 'tooltip')
         .style('opacity', 0);
 
+      const threshold = (root.value || 1) * 0.001;
       // 渲染路径
       g.selectAll('path')
         .data(root.descendants().filter(d => {
-          return d.data.show && (d.value || 0) / (root.value || 1) > 0.001;
+          return d.data.show && (d.value || 0) > threshold;
         }))
         .enter()
         .append('path')
