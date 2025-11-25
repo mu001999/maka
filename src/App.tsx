@@ -122,10 +122,6 @@ function App() {
       const { checkFullDiskAccessPermission } = await import('tauri-plugin-macos-permissions-api')
       const hasAccess = await checkFullDiskAccessPermission()
       setHasDiskAccess(hasAccess)
-      if (!hasAccess) {
-        setError('Disk access denied. Please grant Full Disk Access.')
-        return
-      }
 
       const selectedPath = await invoke<string | null>('select_directory')
       if (selectedPath) {
@@ -199,13 +195,54 @@ function App() {
     try {
       setLoading(true)
       const paths = itemsToDelete.map(item => item.path)
+
+      // Delete from filesystem
       await invoke('delete_items', { paths })
+
+      // Remove deleted nodes from current data tree
+      if (currentData) {
+        const removeNodes = (node: FileNode, pathsToRemove: Set<string>): FileNode | null => {
+          // If this node should be removed, return null
+          if (pathsToRemove.has(node.path)) {
+            return null
+          }
+
+          // Recursively filter children
+          if (node.children && node.children.length > 0) {
+            const filteredChildren = node.children
+              .map(child => removeNodes(child, pathsToRemove))
+              .filter((child): child is FileNode => child !== null)
+
+            // Recalculate size based on remaining children
+            const newSize = filteredChildren.reduce((sum, child) => sum + child.size, 0)
+
+            return {
+              ...node,
+              children: filteredChildren,
+              children_count: filteredChildren.length,
+              size: node.is_directory ? newSize : node.size
+            }
+          }
+
+          return node
+        }
+
+        const pathsSet = new Set(paths)
+        const updatedData = removeNodes(currentData, pathsSet)
+
+        if (updatedData) {
+          setCurrentData(updatedData)
+        }
+      }
+
       setItemsToDelete([])
       setShowDeleteConfirm(false)
-      // Refresh current view
+
+      // Refresh cache in background
       if (currentPath) {
-        await buildCache(currentPath)
-        await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
+        buildCache(currentPath).catch(err => {
+          console.error('Failed to rebuild cache:', err)
+        })
       }
     } catch (err) {
       setError(`Failed to delete items: ${err}`)

@@ -130,13 +130,52 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
         .style('fill', getColor)
         .style('stroke', '#fff')
         .style('stroke-width', 1)
-        .style('cursor', 'pointer')
+        .style('cursor', 'grab')
         .style('opacity', 0.8)
-        .attr('draggable', 'true')
-        .on('dragstart', function (event: any, d: any) {
-          event.dataTransfer.setData('application/json', JSON.stringify(d.data));
-          event.dataTransfer.effectAllowed = 'copy';
-        })
+        .call(d3.drag<SVGRectElement, any>()
+          .on('start', function (_event: any, d: any) {
+            d3.select(this).style('cursor', 'grabbing').style('opacity', 0.6);
+            // Store data for drop
+            (window as any).__dragData = d.data;
+          })
+          .on('drag', function (_event: any) {
+            // Visual feedback during drag
+            d3.select(this).style('opacity', 0.4);
+          })
+          .on('end', function (event: any, _d: any) {
+            d3.select(this).style('cursor', 'grab').style('opacity', 0.8);
+
+            // Check if dropped on delete zone
+            const deleteZone = document.querySelector('.delete-zone');
+            if (deleteZone) {
+              const rect = deleteZone.getBoundingClientRect();
+              const x = event.sourceEvent.clientX;
+              const y = event.sourceEvent.clientY;
+
+              if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                // Trigger drop event on delete zone
+                const dropEvent = new DragEvent('drop', {
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: x,
+                  clientY: y
+                });
+
+                // Set data transfer
+                Object.defineProperty(dropEvent, 'dataTransfer', {
+                  value: {
+                    getData: () => JSON.stringify((window as any).__dragData),
+                    setData: () => { },
+                    effectAllowed: 'copy'
+                  }
+                });
+
+                deleteZone.dispatchEvent(dropEvent);
+                delete (window as any).__dragData;
+              }
+            }
+          })
+        )
         .on('mouseover', function (event, d) {
           d3.select(this)
             .style('opacity', 1)
