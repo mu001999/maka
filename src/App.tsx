@@ -566,9 +566,9 @@ function App() {
           </div>
 
           {/* Info Panel */}
-          <div className="info-sidebar">
-            <div className="info-card details-card">
-              {selectedNode ? (
+          {currentData && selectedNode && (
+            <div className="info-sidebar">
+              <div className="info-card details-card">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3 mb-4">
                     <div
@@ -608,62 +608,58 @@ function App() {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  <p>Select an item to view details</p>
+              </div>
+
+              {selectedNode && selectedNode.children.length > 0 && (
+                <div className="info-card items-card">
+                  <h3 className="text-sm font-bold mb-3 text-gray-400 uppercase tracking-wider">
+                    Top Items
+                  </h3>
+                  <div className="flex-1 flex flex-col gap-2 min-h-0">
+                    {(() => {
+                      const sortedChildren = [...selectedNode.children].sort((a, b) => b.size - a.size);
+                      const MAX_ITEMS = 9;
+                      const displayItems = sortedChildren.slice(0, MAX_ITEMS);
+                      const remainingItems = sortedChildren.slice(MAX_ITEMS);
+                      const otherSize = remainingItems.reduce((acc, item) => acc + item.size, 0);
+
+                      return (
+                        <>
+                          {displayItems.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="item-row cursor-default hover:bg-transparent"
+                            >
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${item.is_directory ? 'bg-blue-500' : 'bg-gray-500'}`} />
+                                <span className="text-sm truncate opacity-90" title={item.name}>
+                                  {truncateMiddle(item.name, 20)}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
+                                {formatSize(item.size)}
+                              </span>
+                            </div>
+                          ))}
+                          {otherSize > 0 && (
+                            <div className="item-row cursor-default hover:bg-transparent">
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="w-2 h-2 rounded-full shrink-0 bg-gray-700" />
+                                <span className="text-sm truncate opacity-90 italic">Other {remainingItems.length} items</span>
+                              </div>
+                              <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
+                                {formatSize(otherSize)}
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
-
-            {selectedNode && selectedNode.children.length > 0 && (
-              <div className="info-card items-card">
-                <h3 className="text-sm font-bold mb-3 text-gray-400 uppercase tracking-wider">
-                  Top Items
-                </h3>
-                <div className="flex-1 flex flex-col gap-2 min-h-0">
-                  {(() => {
-                    const sortedChildren = [...selectedNode.children].sort((a, b) => b.size - a.size);
-                    const MAX_ITEMS = 9;
-                    const displayItems = sortedChildren.slice(0, MAX_ITEMS);
-                    const remainingItems = sortedChildren.slice(MAX_ITEMS);
-                    const otherSize = remainingItems.reduce((acc, item) => acc + item.size, 0);
-
-                    return (
-                      <>
-                        {displayItems.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="item-row cursor-default hover:bg-transparent"
-                          >
-                            <div className="flex items-center gap-3 overflow-hidden">
-                              <div className={`w-2 h-2 rounded-full shrink-0 ${item.is_directory ? 'bg-blue-500' : 'bg-gray-500'}`} />
-                              <span className="text-sm truncate opacity-90" title={item.name}>
-                                {truncateMiddle(item.name, 20)}
-                              </span>
-                            </div>
-                            <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
-                              {formatSize(item.size)}
-                            </span>
-                          </div>
-                        ))}
-                        {otherSize > 0 && (
-                          <div className="item-row cursor-default hover:bg-transparent">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                              <div className="w-2 h-2 rounded-full shrink-0 bg-gray-700" />
-                              <span className="text-sm truncate opacity-90 italic">Other {remainingItems.length} items</span>
-                            </div>
-                            <span className="text-xs text-gray-500 whitespace-nowrap font-mono ml-2">
-                              {formatSize(otherSize)}
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div >
