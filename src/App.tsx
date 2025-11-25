@@ -52,6 +52,7 @@ function App() {
   const [itemsToDelete, setItemsToDelete] = useState<FileNode[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const [draggedNodes, setDraggedNodes] = useState<Set<string>>(new Set())
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -200,6 +201,12 @@ function App() {
 
   const handleRemoveFromDeleteList = (path: string) => {
     setItemsToDelete(prev => prev.filter(item => item.path !== path))
+    // Remove from dragged nodes to restore in chart
+    setDraggedNodes(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(path)
+      return newSet
+    })
   }
 
   const handleConfirmDelete = async () => {
@@ -269,6 +276,28 @@ function App() {
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
+
+  // Filter out dragged nodes from the data tree
+  const filterDraggedNodes = (node: FileNode | null): FileNode | null => {
+    if (!node) return null
+    if (draggedNodes.has(node.path)) return null
+
+    if (node.children && node.children.length > 0) {
+      const filteredChildren = node.children
+        .map(child => filterDraggedNodes(child))
+        .filter((child): child is FileNode => child !== null)
+
+      return {
+        ...node,
+        children: filteredChildren,
+        children_count: filteredChildren.length
+      }
+    }
+
+    return node
+  }
+
+  const filteredData = filterDraggedNodes(currentData)
 
   const truncateMiddle = (text: string, maxLength: number = 24) => {
     if (text.length <= maxLength) return text
@@ -519,15 +548,17 @@ function App() {
               <div className="chart-view">
                 {viewMode === 'sunburst' ? (
                   <SunburstChart
-                    data={currentData}
+                    data={filteredData}
                     onNodeClick={handleNodeClick}
                     onNodeHover={handleNodeHover}
+                    onDragStart={setDraggedNodes}
                   />
                 ) : (
                   <TreemapChart
-                    data={currentData}
+                    data={filteredData}
                     onNodeClick={handleNodeClick}
                     onNodeHover={handleNodeHover}
+                    onDragStart={setDraggedNodes}
                   />
                 )}
               </div>

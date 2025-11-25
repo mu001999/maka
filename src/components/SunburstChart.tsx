@@ -17,9 +17,17 @@ interface SunburstChartProps {
   onNodeHover?: (node: FileNode) => void;
   width?: number;
   height?: number;
+  onDragStart?: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
-const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNodeHover, width, height }) => {
+const SunburstChart: React.FC<SunburstChartProps> = ({
+  data,
+  onNodeClick,
+  onNodeHover,
+  width,
+  height,
+  onDragStart
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -109,46 +117,102 @@ const SunburstChart: React.FC<SunburstChartProps> = ({ data, onNodeClick, onNode
         .style('cursor', 'grab')
         .style('opacity', 0.8)
         .call(d3.drag<SVGPathElement, any>()
-          .on('start', function (event: any, d: any) {
-            d3.select(this).style('cursor', 'grabbing').style('opacity', 0.6);
+          .on('start', function (_event: any, d: any) {
+            // Add to dragged nodes set
+            if (onDragStart) {
+              onDragStart(prev => {
+                const newSet = new Set(prev);
+                newSet.add(d.data.path);
+                return newSet;
+              });
+            }
+
             // Store data for drop
             (window as any).__dragData = d.data;
+
+            // Create ghost element for cursor
+            const ghost = document.createElement('div');
+            ghost.id = 'drag-ghost';
+            ghost.style.cssText = `
+              position: fixed;
+              pointer-events: none;
+              z-index: 10000;
+              background: rgba(59, 130, 246, 0.9);
+              color: white;
+              padding: 8px 12px;
+              border-radius: 6px;
+              font-size: 14px;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            `;
+            ghost.innerHTML = `
+              ${d.data.is_directory ? '📁' : '📄'} ${d.data.name.length > 20 ? d.data.name.substring(0, 20) + '...' : d.data.name}
+            `;
+            document.body.appendChild(ghost);
           })
           .on('drag', function (event: any) {
-            // Visual feedback during drag
-            d3.select(this).style('opacity', 0.4);
+            const ghost = document.getElementById('drag-ghost');
+            if (ghost) {
+              ghost.style.left = (event.sourceEvent.clientX + 10) + 'px';
+              ghost.style.top = (event.sourceEvent.clientY + 10) + 'px';
+            }
           })
-          .on('end', function (event: any, d: any) {
-            d3.select(this).style('cursor', 'grab').style('opacity', 0.8);
-
-            // Check if dropped on delete zone
-            const deleteZone = document.querySelector('.delete-zone');
-            if (deleteZone) {
-              const rect = deleteZone.getBoundingClientRect();
-              const x = event.sourceEvent.clientX;
-              const y = event.sourceEvent.clientY;
-
-              if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-                // Trigger drop event on delete zone
-                const dropEvent = new DragEvent('drop', {
-                  bubbles: true,
-                  cancelable: true,
-                  clientX: x,
-                  clientY: y
-                });
-
-                // Set data transfer
-                Object.defineProperty(dropEvent, 'dataTransfer', {
-                  value: {
-                    getData: () => JSON.stringify((window as any).__dragData),
-                    setData: () => { },
-                    effectAllowed: 'copy'
-                  }
-                });
-
-                deleteZone.dispatchEvent(dropEvent);
-                delete (window as any).__dragData;
+          .on('end', function (event: any, _d: any) {
+            try {
+              const ghost = document.getElementById('drag-ghost');
+              if (ghost) {
+                ghost.remove();
               }
+
+              // Check if dropped on delete zone
+              const deleteZone = document.querySelector('.delete-zone');
+              let droppedOnDeleteZone = false;
+
+              if (deleteZone && event && event.sourceEvent) {
+                const rect = deleteZone.getBoundingClientRect();
+                const x = event.sourceEvent.clientX;
+                const y = event.sourceEvent.clientY;
+
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                  droppedOnDeleteZone = true;
+                  // Trigger drop event on delete zone
+                  const dropEvent = new DragEvent('drop', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: x,
+                    clientY: y
+                  });
+
+                  // Set data transfer
+                  Object.defineProperty(dropEvent, 'dataTransfer', {
+                    value: {
+                      getData: () => JSON.stringify((window as any).__dragData),
+                      setData: () => { },
+                      effectAllowed: 'copy'
+                    }
+                  });
+
+                  deleteZone.dispatchEvent(dropEvent);
+                }
+              }
+
+              // Restore if not dropped on delete zone
+              if (!droppedOnDeleteZone && onDragStart && (window as any).__dragData) {
+                const dragData = (window as any).__dragData;
+                if (dragData && dragData.path) {
+                  onDragStart(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(dragData.path);
+                    return newSet;
+                  });
+                }
+              }
+            } catch (error) {
+              console.error('Error in drag end:', error);
+            } finally {
+              delete (window as any).__dragData;
             }
           })
         )
