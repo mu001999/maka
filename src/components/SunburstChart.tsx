@@ -117,50 +117,76 @@ const SunburstChart: React.FC<SunburstChartProps> = ({
         .style('cursor', 'grab')
         .style('opacity', 0.8)
         .call(d3.drag<SVGPathElement, any>()
-          .on('start', function (_event: any, d: any) {
-            // Add to dragged nodes set
-            if (onDragStart) {
-              onDragStart(prev => {
-                const newSet = new Set(prev);
-                newSet.add(d.data.path);
-                return newSet;
-              });
-            }
-
-            // Store data for drop
+          .on('start', function (event: any, d: any) {
+            // Store initial position and data
+            (window as any).__dragStartX = event.x;
+            (window as any).__dragStartY = event.y;
             (window as any).__dragData = d.data;
-
-            // Create ghost element for cursor
-            const ghost = document.createElement('div');
-            ghost.id = 'drag-ghost';
-            ghost.style.cssText = `
-              position: fixed;
-              pointer-events: none;
-              z-index: 10000;
-              background: rgba(59, 130, 246, 0.9);
-              color: white;
-              padding: 8px 12px;
-              border-radius: 6px;
-              font-size: 14px;
-              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-              display: flex;
-              align-items: center;
-              gap: 6px;
-            `;
-            ghost.innerHTML = `
-              ${d.data.is_directory ? '📁' : '📄'} ${d.data.name.length > 20 ? d.data.name.substring(0, 20) + '...' : d.data.name}
-            `;
-            document.body.appendChild(ghost);
+            (window as any).__isDragging = false;
           })
-          .on('drag', function (event: any) {
-            const ghost = document.getElementById('drag-ghost');
-            if (ghost) {
-              ghost.style.left = (event.sourceEvent.clientX + 10) + 'px';
-              ghost.style.top = (event.sourceEvent.clientY + 10) + 'px';
+          .on('drag', function (event: any, d: any) {
+            // Calculate distance moved
+            const dx = event.x - (window as any).__dragStartX;
+            const dy = event.y - (window as any).__dragStartY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Only start dragging if moved more than 5 pixels
+            if (distance > 5 && !(window as any).__isDragging) {
+              (window as any).__isDragging = true;
+
+              // Add to dragged nodes set
+              if (onDragStart) {
+                onDragStart(prev => {
+                  const newSet = new Set(prev);
+                  newSet.add(d.data.path);
+                  return newSet;
+                });
+              }
+
+              // Create ghost element
+              const ghost = document.createElement('div');
+              ghost.id = 'drag-ghost';
+              ghost.style.cssText = `
+                position: fixed;
+                pointer-events: none;
+                z-index: 10000;
+                background: rgba(59, 130, 246, 0.9);
+                color: white;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 14px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+              `;
+              ghost.innerHTML = `
+                ${d.data.is_directory ? '📁' : '📄'} ${d.data.name.length > 20 ? d.data.name.substring(0, 20) + '...' : d.data.name}
+              `;
+              document.body.appendChild(ghost);
+            }
+
+            // Update ghost position if dragging
+            if ((window as any).__isDragging) {
+              const ghost = document.getElementById('drag-ghost');
+              if (ghost) {
+                ghost.style.left = (event.sourceEvent.clientX + 10) + 'px';
+                ghost.style.top = (event.sourceEvent.clientY + 10) + 'px';
+              }
             }
           })
-          .on('end', function (event: any, _d: any) {
+          .on('end', function (event: any, d: any) {
             try {
+              const isDragging = (window as any).__isDragging;
+
+              // If not dragging (just a click), trigger click event
+              if (!isDragging) {
+                if (d.data.path && d.data.path !== data.path) {
+                  onNodeClick(d.data);
+                }
+                return;
+              }
+
               const ghost = document.getElementById('drag-ghost');
               if (ghost) {
                 ghost.remove();
@@ -177,7 +203,6 @@ const SunburstChart: React.FC<SunburstChartProps> = ({
 
                 if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
                   droppedOnDeleteZone = true;
-                  // Trigger drop event on delete zone
                   const dropEvent = new DragEvent('drop', {
                     bubbles: true,
                     cancelable: true,
@@ -185,7 +210,6 @@ const SunburstChart: React.FC<SunburstChartProps> = ({
                     clientY: y
                   });
 
-                  // Set data transfer
                   Object.defineProperty(dropEvent, 'dataTransfer', {
                     value: {
                       getData: () => JSON.stringify((window as any).__dragData),
@@ -213,6 +237,9 @@ const SunburstChart: React.FC<SunburstChartProps> = ({
               console.error('Error in drag end:', error);
             } finally {
               delete (window as any).__dragData;
+              delete (window as any).__dragStartX;
+              delete (window as any).__dragStartY;
+              delete (window as any).__isDragging;
             }
           })
         )
