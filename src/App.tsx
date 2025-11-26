@@ -167,7 +167,7 @@ function App() {
       await loadDirectoryChildrenWithDepth(parentPath, maxDepth)
 
     }
-  }, [currentPath, loadDirectoryChildrenWithDepth])
+  }, [currentPath, loadDirectoryChildrenWithDepth, maxDepth])
 
   const handleRefresh = useCallback(async () => {
     if (currentPath) {
