@@ -278,26 +278,28 @@ function App() {
   }
 
   // Filter out dragged nodes from the data tree
-  const filterDraggedNodes = (node: FileNode | null): FileNode | null => {
-    if (!node) return null
-    if (draggedNodes.has(node.path)) return null
+  const filteredData = React.useMemo(() => {
+    const filterDraggedNodes = (node: FileNode | null): FileNode | null => {
+      if (!node) return null
+      if (draggedNodes.has(node.path)) return null
 
-    if (node.children && node.children.length > 0) {
-      const filteredChildren = node.children
-        .map(child => filterDraggedNodes(child))
-        .filter((child): child is FileNode => child !== null)
+      if (node.children && node.children.length > 0) {
+        const filteredChildren = node.children
+          .map(child => filterDraggedNodes(child))
+          .filter((child): child is FileNode => child !== null)
 
-      return {
-        ...node,
-        children: filteredChildren,
-        children_count: filteredChildren.length
+        return {
+          ...node,
+          children: filteredChildren,
+          children_count: filteredChildren.length
+        }
       }
+
+      return node
     }
 
-    return node
-  }
-
-  const filteredData = filterDraggedNodes(currentData)
+    return filterDraggedNodes(currentData)
+  }, [currentData, draggedNodes])
 
   const truncateMiddle = (text: string, maxLength: number = 24) => {
     if (text.length <= maxLength) return text
