@@ -8,8 +8,14 @@ Maka is a modern, high-performance disk usage visualization tool built with Taur
 - **Interactive Visualizations**:
   - **Sunburst Chart**: Visualize directory hierarchy and size distribution radially.
   - **Treemap Chart**: View disk usage as nested rectangles for easy size comparison.
+- **Delete Zone**: Drag and drop items to a temporary holding area to review before permanently deleting them.
+- **Drag & Drop**: Intuitive drag and drop interface for managing files and adding them to the Delete Zone.
+- **Smart Navigation**:
+  - **Breadcrumbs**: Interactive path navigation to quickly jump to parent directories.
+  - **Depth Control**: Adjust the visualization depth to focus on high-level overview or deep details.
 - **Modern UI**: Clean, dark-themed interface built with React and Tailwind-like CSS.
 - **Cross-Platform**: Built on Tauri, running natively on macOS (and potentially Windows/Linux).
+- **Privacy Focused**: Automatically handles Full Disk Access permissions on macOS to ensure complete scanning.
 
 ## Tech Stack
 
@@ -17,6 +23,7 @@ Maka is a modern, high-performance disk usage visualization tool built with Taur
 - **Backend**: Rust, Tauri
 - **State Management**: React Hooks
 - **Styling**: Vanilla CSS (Modern features)
+- **Permissions**: `tauri-plugin-macos-permissions-api`
 
 ## Prerequisites
 
