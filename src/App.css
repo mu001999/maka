@@ -798,6 +798,13 @@
   }
 }
 
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
 .modal-header {
   display: flex;
   align-items: center;

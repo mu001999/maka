@@ -542,7 +542,7 @@ function App() {
                 <AlertTriangle className="text-red-500" size={24} />
                 <h3>Confirm Deletion</h3>
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="modal-footer">
                 <button
                   onClick={handleConfirmDelete}
                   className="btn btn-danger"
