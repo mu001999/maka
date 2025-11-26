@@ -2,6 +2,8 @@
 
 Maka is a modern, high-performance disk usage visualization tool built with Tauri, React, and Rust. It helps you quickly analyze your disk space usage with interactive charts.
 
+![Preview](./raw/screenshot.png)
+
 ## Features
 
 - **Fast Scanning**: Powered by Rust's `rayon` for parallel processing and `dashmap` for concurrent caching.
