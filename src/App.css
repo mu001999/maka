@@ -488,8 +488,8 @@
 
 /* Delete Zone */
 .btn-icon-small {
-  padding: 2px;
-  border-radius: 4px;
+  padding: 4px;
+  border-radius: 6px;
   color: var(--text-secondary);
   background: transparent;
   border: none;
@@ -497,6 +497,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
 
 .btn-icon-small:hover {
@@ -506,54 +507,212 @@
 
 .delete-zone {
   flex: 1;
-  background-color: rgba(0, 0, 0, 0.2);
-  border: 2px dashed var(--border-color);
-  border-radius: 8px;
-  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  min-height: 100px;
+  min-height: 120px;
+  position: relative;
 }
 
 .delete-zone.drag-over {
   background-color: rgba(239, 68, 68, 0.1);
   border-color: var(--error-color);
   transform: scale(1.02);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
 }
 
 .delete-zone.has-items {
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: rgba(30, 41, 59, 0.5);
   border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Expanded Delete Zone */
-.delete-zone.expanded {
+/* Compact Summary View */
+.delete-summary {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+}
+
+.delete-summary-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: rgba(239, 68, 68, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.delete-summary-icon:hover {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.delete-summary-info {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.delete-summary-size {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  /* color: var(--text-secondary); */
+  /* background-color: rgba(255, 255, 255, 0.05); */
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.delete-clear-btn {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-clear-btn:hover {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.expand-btn {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Expanded Overlay */
+.delete-zone-overlay {
   position: fixed;
-  top: 40px;
-  left: 20px;
-  right: 20px;
-  bottom: 20px;
+  inset: 0;
   z-index: 2000;
-  background-color: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.delete-zone-expanded-content {
+  width: 90%;
+  height: 90%;
+  background-color: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleUp {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.delete-zone-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: rgba(0, 0, 0, 0.2);
+  height: 80px;
+  /* Fixed height for absolute centering */
+}
+
+.delete-zone-grid {
+  flex: 1;
   padding: 24px;
-}
-
-.delete-zone.expanded .delete-list {
+  overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* Wider columns for paths */
+  gap: 16px;
+  align-content: start;
 }
 
-.delete-zone.expanded .delete-item {
-  padding: 12px;
+.delete-grid-item {
   background-color: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 12px 16px;
+  position: relative;
+  transition: all 0.2s;
+  cursor: default;
+  display: flex;
+  align-items: center;
+}
+
+.delete-grid-item:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.delete-grid-remove {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.4);
+  color: var(--text-secondary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.delete-grid-item:hover .delete-grid-remove {
+  opacity: 1;
+}
+
+.delete-grid-remove:hover {
+  background-color: var(--error-color);
+  color: white;
 }
 
 .delete-placeholder {
@@ -565,61 +724,32 @@
   color: var(--text-secondary);
 }
 
-.delete-list {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 0;
-}
-
-.delete-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  font-size: 0.75rem;
-  border: 1px solid transparent;
-  transition: all 0.2s;
-}
-
-.delete-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-.delete-item-remove {
-  background: transparent;
+.btn-danger {
+  background-color: rgba(220, 38, 38, 0.9);
+  color: white;
+  padding: 8px 16px;
+  font-weight: 600;
+  border-radius: 8px;
   border: none;
-  color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
-}
-
-.delete-item-remove:hover {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: var(--error-color);
-}
-
-.btn-danger {
-  background-color: rgba(220, 38, 38, 0.8);
-  color: white;
-  padding: 8px;
-  font-weight: 600;
-  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+  gap: 8px;
 }
 
 .btn-danger:hover {
   background-color: rgb(220, 38, 38);
-  box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Modal */

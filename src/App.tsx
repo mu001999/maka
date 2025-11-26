@@ -404,26 +404,14 @@ function App() {
         </div>
 
         {/* Delete Zone */}
-        <div className={`sidebar-section flex-1 min-h-0 flex flex-col ${isDeleteZoneExpanded ? 'delete-zone-expanded-container' : ''}`}>
+        <div className={`sidebar-section flex-1 min-h-0 flex flex-col`}>
           <div className="section-title flex justify-between items-center">
             <span>Delete Zone</span>
-            <div className="flex gap-2">
-              {itemsToDelete.length > 0 && (
-                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
-                  {itemsToDelete.length}
-                </span>
-              )}
-              <button
-                onClick={() => setIsDeleteZoneExpanded(!isDeleteZoneExpanded)}
-                className="btn-icon-small"
-                title={isDeleteZoneExpanded ? "Collapse" : "Expand"}
-              >
-                {isDeleteZoneExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              </button>
-            </div>
           </div>
+
+          {/* Collapsed View */}
           <div
-            className={`delete-zone ${isDraggingOver ? 'drag-over' : ''} ${itemsToDelete.length > 0 ? 'has-items' : ''} ${isDeleteZoneExpanded ? 'expanded' : ''}`}
+            className={`delete-zone ${isDraggingOver ? 'drag-over' : ''} ${itemsToDelete.length > 0 ? 'has-items' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -431,41 +419,119 @@ function App() {
             {itemsToDelete.length === 0 ? (
               <div className="delete-placeholder">
                 <Trash2 size={24} className="mb-2 opacity-50" />
-                <p className="text-xs text-center opacity-70">
-                  Drag items here to delete
-                </p>
               </div>
             ) : (
-              <div className="delete-list">
-                {itemsToDelete.map(item => (
-                  <div key={item.path} className="delete-item">
-                    <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
-                      {item.is_directory ? <FolderOpen size={12} className="shrink-0" /> : <File size={12} className="shrink-0" />}
-                      <span className="truncate text-xs" title={item.path}>{item.name}</span>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveFromDeleteList(item.path)}
-                      className="delete-item-remove shrink-0"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+              <div className="delete-summary">
+                <button
+                  onClick={() => setIsDeleteZoneExpanded(true)}
+                  className="btn-icon-small expand-btn"
+                  title="Expand"
+                >
+                  <Maximize2 size={14} />
+                </button>
+                <div className="delete-summary-icon" onClick={() => setShowDeleteConfirm(true)}>
+                  <Trash2 size={20} className="text-red-400" />
+                </div>
+                <div className="delete-summary-info">
+                  <span className="font-bold text-lg">{itemsToDelete.length} Items</span>
+                </div>
+                <div className="delete-summary-size">
+                  {formatSize(itemsToDelete.reduce((acc, item) => acc + item.size, 0))}
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setItemsToDelete([]);
+                    setDraggedNodes(new Set());
+                  }}
+                  className="btn-icon-small delete-clear-btn"
+                  title="Clear all"
+                >
+                  <X size={14} />
+                </button>
               </div>
-            )}
-
-            {itemsToDelete.length > 0 && (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-danger mt-2 w-full shrink-0"
-              >
-                <Trash2 size={14} />
-                Delete All
-              </button>
             )}
           </div>
         </div>
       </div>
+
+      {/* Expanded Delete Zone Overlay */}
+      {isDeleteZoneExpanded && (
+        <div className="delete-zone-overlay">
+          <div className="delete-zone-expanded-content">
+            <div className="delete-zone-header relative">
+              {/* Left: Delete Button */}
+              <div className="flex-1 flex justify-start">
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="btn btn-danger"
+                  disabled={itemsToDelete.length === 0}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+
+              {/* Center: Info */}
+              <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                {/* <h2 className="text-lg font-bold">Delete Zone</h2> */}
+                <h2 className="flex items-center gap-2 text-sm text-gray-400">
+                  <span className="font-mono">{formatSize(itemsToDelete.reduce((acc, item) => acc + item.size, 0))}</span>
+                  <span> • </span>
+                  <span className="bg-white/10 px-2 py-0.5 rounded text-xs font-mono">{itemsToDelete.length} Items</span>
+                </h2>
+              </div>
+
+              {/* Right: Close Button */}
+              <div className="flex-1 flex justify-end">
+                <button
+                  onClick={() => setIsDeleteZoneExpanded(false)}
+                  className="btn-icon bg-gray-800 hover:bg-gray-700"
+                  title="Minimize"
+                >
+                  <Minimize2 size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="delete-zone-grid" onDragOver={handleDragOver} onDrop={handleDrop} onDragLeave={handleDragLeave}>
+              {itemsToDelete.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full opacity-50 col-span-full">
+                  <Trash2 size={48} className="mb-4" />
+                  <p>Drag more items here</p>
+                </div>
+              ) : (
+                itemsToDelete.map(item => (
+                  <div key={item.path} className="delete-grid-item group">
+                    <div className="flex items-center gap-3 w-full overflow-hidden">
+                      {item.is_directory ? (
+                        <FolderOpen size={12} className="text-blue-400 shrink-0" />
+                      ) : (
+                        <File size={12} className="text-gray-400 shrink-0" />
+                      )}
+                      <span className="text-xs text-gray-500 font-mono">
+                        &nbsp;{formatSize(item.size)}
+                      </span>
+
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm text-gray-200 truncate" title={item.path}>
+                          {item.path}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleRemoveFromDeleteList(item.path)}
+                      className="delete-grid-remove"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {
@@ -476,27 +542,18 @@ function App() {
                 <AlertTriangle className="text-red-500" size={24} />
                 <h3>Confirm Deletion</h3>
               </div>
-              <p className="mb-4">
-                Are you sure you want to permanently delete {itemsToDelete.length} items?
-                This action cannot be undone.
-              </p>
-              <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded mb-4 text-xs font-mono">
-                {itemsToDelete.map(item => (
-                  <div key={item.path} className="truncate">{item.path}</div>
-                ))}
-              </div>
               <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
                 <button
                   onClick={handleConfirmDelete}
                   className="btn btn-danger"
                 >
                   Delete Permanently
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
                 </button>
               </div>
             </div>
