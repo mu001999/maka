@@ -11,7 +11,10 @@ import {
   AlertTriangle,
   X,
   ShieldAlert,
-  File
+  File,
+  Maximize2,
+  Minimize2,
+  Settings
 } from 'lucide-react'
 import './App.css'
 import SunburstChart from './components/SunburstChart'
@@ -53,6 +56,7 @@ function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [draggedNodes, setDraggedNodes] = useState<Set<string>>(new Set())
+  const [isDeleteZoneExpanded, setIsDeleteZoneExpanded] = useState(false)
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -318,16 +322,16 @@ function App() {
           <ShieldAlert className="text-yellow-500" size={20} />
           <div className="flex-1">
             <p className="font-bold">Full Disk Access Required</p>
-            <p className="text-sm opacity-90">Maka needs permission to scan your disk accurately.</p>
           </div>
-          <button onClick={handleOpenPrivacy} className="btn-small">
-            Open Settings
+          <button onClick={handleOpenPrivacy} className="btn-small-secondary" title="Open Privacy Settings">
+            <Settings size={16} />
           </button>
           <button onClick={handleDismissBanner} className="btn-small-secondary" title="Don't show again">
             <X size={16} />
           </button>
         </div>
-      )}
+      )
+      }
       {/* Sidebar */}
       <div className="sidebar" style={{ paddingTop: '52px' }}>
         {/* <div className="sidebar-header"> */}
@@ -400,17 +404,26 @@ function App() {
         </div>
 
         {/* Delete Zone */}
-        <div className="sidebar-section flex-1 min-h-0 flex flex-col">
+        <div className={`sidebar-section flex-1 min-h-0 flex flex-col ${isDeleteZoneExpanded ? 'delete-zone-expanded-container' : ''}`}>
           <div className="section-title flex justify-between items-center">
             <span>Delete Zone</span>
-            {itemsToDelete.length > 0 && (
-              <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
-                {itemsToDelete.length}
-              </span>
-            )}
+            <div className="flex gap-2">
+              {itemsToDelete.length > 0 && (
+                <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
+                  {itemsToDelete.length}
+                </span>
+              )}
+              <button
+                onClick={() => setIsDeleteZoneExpanded(!isDeleteZoneExpanded)}
+                className="btn-icon-small"
+                title={isDeleteZoneExpanded ? "Collapse" : "Expand"}
+              >
+                {isDeleteZoneExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            </div>
           </div>
           <div
-            className={`delete-zone ${isDraggingOver ? 'drag-over' : ''} ${itemsToDelete.length > 0 ? 'has-items' : ''}`}
+            className={`delete-zone ${isDraggingOver ? 'drag-over' : ''} ${itemsToDelete.length > 0 ? 'has-items' : ''} ${isDeleteZoneExpanded ? 'expanded' : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -426,13 +439,13 @@ function App() {
               <div className="delete-list">
                 {itemsToDelete.map(item => (
                   <div key={item.path} className="delete-item">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      {item.is_directory ? <FolderOpen size={12} /> : <File size={12} />}
+                    <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                      {item.is_directory ? <FolderOpen size={12} className="shrink-0" /> : <File size={12} className="shrink-0" />}
                       <span className="truncate text-xs" title={item.path}>{item.name}</span>
                     </div>
                     <button
                       onClick={() => handleRemoveFromDeleteList(item.path)}
-                      className="delete-item-remove"
+                      className="delete-item-remove shrink-0"
                     >
                       <X size={12} />
                     </button>
@@ -444,7 +457,7 @@ function App() {
             {itemsToDelete.length > 0 && (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-danger mt-2 w-full"
+                className="btn btn-danger mt-2 w-full shrink-0"
               >
                 <Trash2 size={14} />
                 Delete All
@@ -455,39 +468,41 @@ function App() {
       </div>
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <AlertTriangle className="text-red-500" size={24} />
-              <h3>Confirm Deletion</h3>
-            </div>
-            <p className="mb-4">
-              Are you sure you want to permanently delete {itemsToDelete.length} items?
-              This action cannot be undone.
-            </p>
-            <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded mb-4 text-xs font-mono">
-              {itemsToDelete.map(item => (
-                <div key={item.path} className="truncate">{item.path}</div>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="btn btn-danger"
-              >
-                Delete Permanently
-              </button>
+      {
+        showDeleteConfirm && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">
+                <AlertTriangle className="text-red-500" size={24} />
+                <h3>Confirm Deletion</h3>
+              </div>
+              <p className="mb-4">
+                Are you sure you want to permanently delete {itemsToDelete.length} items?
+                This action cannot be undone.
+              </p>
+              <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded mb-4 text-xs font-mono">
+                {itemsToDelete.map(item => (
+                  <div key={item.path} className="truncate">{item.path}</div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="btn btn-danger"
+                >
+                  Delete Permanently
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Main Content */}
       <div className="main-content" style={{ paddingTop: '32px' }}>
