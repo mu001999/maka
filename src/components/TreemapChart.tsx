@@ -63,10 +63,11 @@ const TreemapChart: React.FC<TreemapChartProps> = ({
 
       svg.attr('width', chartWidth).attr('height', chartHeight);
 
+      const threshold = (data.size || 1) * 0.001;
       // Create hierarchy with filtered data - filter out hidden nodes
       const root = d3.hierarchy(data, (d) => {
         if (!d.children) return null;
-        const visibleChildren = d.children.filter(c => c.show);
+        const visibleChildren = d.children.filter(c => c.show && c.size > threshold);
         return visibleChildren.length > 0 ? visibleChildren : null;
       })
 
