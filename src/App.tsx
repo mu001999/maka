@@ -171,9 +171,10 @@ function App() {
 
   const handleRefresh = useCallback(async () => {
     if (currentPath) {
+      await buildCache(currentPath)
       await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
     }
-  }, [currentPath, loadDirectoryChildrenWithDepth, maxDepth])
+  }, [currentPath, buildCache, loadDirectoryChildrenWithDepth, maxDepth])
 
   const handleBreadcrumbClick = async (path: string) => {
     await loadDirectoryChildrenWithDepth(path, maxDepth)
