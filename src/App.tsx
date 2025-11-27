@@ -57,6 +57,7 @@ function App() {
   const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [draggedNodes, setDraggedNodes] = useState<Set<string>>(new Set())
   const [isDeleteZoneExpanded, setIsDeleteZoneExpanded] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -216,7 +217,7 @@ function App() {
 
   const handleConfirmDelete = async () => {
     try {
-      setLoading(true)
+      setIsDeleting(true)
       const paths = itemsToDelete.map(item => item.path)
 
       // Delete from filesystem
@@ -259,18 +260,19 @@ function App() {
       }
 
       setItemsToDelete([])
-      setShowDeleteConfirm(false)
 
       // Refresh cache in background
       if (currentPath) {
-        buildCache(currentPath).catch(err => {
+        await buildCache(currentPath).catch(err => {
           console.error('Failed to rebuild cache:', err)
         })
+        await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
       }
     } catch (err) {
       setError(`Failed to delete items: ${err}`)
     } finally {
-      setLoading(false)
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -546,13 +548,22 @@ function App() {
               <div className="modal-footer">
                 <button
                   onClick={handleConfirmDelete}
-                  className="btn btn-danger"
+                  className="btn btn-danger flex items-center gap-2"
+                  disabled={isDeleting}
                 >
-                  Delete Permanently
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete Permanently'
+                  )}
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
                   className="btn btn-secondary"
+                  disabled={isDeleting}
                 >
                   Cancel
                 </button>
