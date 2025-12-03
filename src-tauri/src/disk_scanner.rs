@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::Path;
 
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+
 use dashmap::DashMap;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -147,6 +150,20 @@ impl DiskScanner {
                 show: true,
             })
         } else {
+            // Calculate actual disk space used (handles sparse files)
+            let actual_size = {
+                #[cfg(target_family = "unix")]
+                {
+                    // Unix: use st_blocks (each block is 512 bytes)
+                    metadata.blocks() * 512
+                }
+                #[cfg(not(target_family = "unix"))]
+                {
+                    // Non-Unix systems: fall back to logical size
+                    metadata.len()
+                }
+            };
+
             Ok(FileNode {
                 name: path
                     .file_name()
@@ -154,7 +171,7 @@ impl DiskScanner {
                     .to_string_lossy()
                     .to_string(),
                 path: path.to_string_lossy().to_string(),
-                size: metadata.len(),
+                size: actual_size,
                 is_directory: false,
                 children: vec![],
                 children_count: 0,
