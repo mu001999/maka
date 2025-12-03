@@ -398,7 +398,6 @@ function App() {
               onChange={(e) => setMaxDepth(parseInt(e.target.value))}
               onMouseUp={async () => {
                 if (currentPath) {
-                  await buildCache(currentPath)
                   await loadDirectoryChildrenWithDepth(currentPath, maxDepth)
                 }
               }}
