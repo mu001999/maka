@@ -1,14 +1,79 @@
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
 use dashmap::DashMap;
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
 
 static SCANNER: std::sync::LazyLock<DiskScanner> = std::sync::LazyLock::new(|| DiskScanner::new());
+
+/// Progress information emitted during scanning
+#[derive(Clone, Serialize)]
+pub struct ScanProgress {
+    pub scanned_size: u64,
+    pub file_count: u64,
+}
+
+/// Thread-safe progress tracker with throttled event emission
+struct ProgressTracker {
+    scanned_size: AtomicU64,
+    file_count: AtomicU64,
+    app_handle: AppHandle,
+    last_emit: Mutex<Instant>,
+}
+
+impl ProgressTracker {
+    fn new(app_handle: AppHandle) -> Self {
+        Self {
+            scanned_size: AtomicU64::new(0),
+            file_count: AtomicU64::new(0),
+            app_handle,
+            last_emit: Mutex::new(Instant::now()),
+        }
+    }
+
+    fn add_file(&self, size: u64) {
+        self.scanned_size.fetch_add(size, Ordering::Relaxed);
+        self.file_count.fetch_add(1, Ordering::Relaxed);
+        self.maybe_emit();
+    }
+
+    fn maybe_emit(&self) {
+        let mut last = self.last_emit.lock();
+        if last.elapsed() >= Duration::from_millis(100) {
+            *last = Instant::now();
+            let scanned = self.scanned_size.load(Ordering::Relaxed);
+            let count = self.file_count.load(Ordering::Relaxed);
+            let _ = self.app_handle.emit(
+                "scan-progress",
+                ScanProgress {
+                    scanned_size: scanned,
+                    file_count: count,
+                },
+            );
+        }
+    }
+
+    fn emit_final(&self) {
+        let scanned = self.scanned_size.load(Ordering::Relaxed);
+        let count = self.file_count.load(Ordering::Relaxed);
+        let _ = self.app_handle.emit(
+            "scan-progress",
+            ScanProgress {
+                scanned_size: scanned,
+                file_count: count,
+            },
+        );
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileNode {
@@ -59,13 +124,19 @@ impl DiskScanner {
         }
     }
 
-    pub fn build_cache(&self, path: &str) -> Result<(), String> {
-        let root_node = self.scan_file_or_directory(Path::new(path))?;
+    pub fn build_cache(&self, path: &str, app_handle: AppHandle) -> Result<(), String> {
+        let tracker = Arc::new(ProgressTracker::new(app_handle));
+        let root_node = self.scan_file_or_directory(Path::new(path), &tracker)?;
+        tracker.emit_final();
         self.cache.insert(path.to_string(), root_node);
         Ok(())
     }
 
-    fn scan_file_or_directory(&self, path: &Path) -> Result<FileNode, String> {
+    fn scan_file_or_directory(
+        &self,
+        path: &Path,
+        tracker: &Arc<ProgressTracker>,
+    ) -> Result<FileNode, String> {
         let path = Path::new(path);
         if !path.exists() {
             return Err("Path does not exist".to_string());
@@ -120,12 +191,13 @@ impl DiskScanner {
             }
 
             // Use rayon for parallel processing of directory entries
+            let tracker = Arc::clone(tracker);
             let mut children: Vec<FileNode> = entries
                 .par_bridge() // Convert to parallel iterator
                 .filter_map(|entry| entry.ok())
                 .filter_map(|entry| {
                     let entry_path = entry.path();
-                    match self.scan_file_or_directory(&entry_path) {
+                    match self.scan_file_or_directory(&entry_path, &tracker) {
                         Ok(child_node) => Some(child_node),
                         Err(_) => None,
                     }
@@ -163,6 +235,9 @@ impl DiskScanner {
                     metadata.len()
                 }
             };
+
+            // Update progress tracker (only for files, as per requirement)
+            tracker.add_file(actual_size);
 
             Ok(FileNode {
                 name: path
@@ -202,18 +277,22 @@ impl DiskScanner {
 
 // New Tauri commands for on-demand loading using rayon for parallel processing
 #[tauri::command]
-pub async fn build_cache(path: String) -> Result<(), String> {
+pub async fn build_cache(app: AppHandle, path: String) -> Result<(), String> {
     // Use rayon parallel processing to build cache
-    rayon::scope(|_s| SCANNER.build_cache(&path))
+    rayon::scope(|_s| SCANNER.build_cache(&path, app.clone()))
 }
 
 #[tauri::command]
-pub async fn get_result_with_depth(path: String, max_depth: u32) -> Result<FileNode, String> {
+pub async fn get_result_with_depth(
+    app: AppHandle,
+    path: String,
+    max_depth: u32,
+) -> Result<FileNode, String> {
     if let Ok(node) = SCANNER.get_result_with_depth(&path, max_depth) {
         Ok(node)
     } else {
         // Let us try again
-        build_cache(path.clone()).await?;
+        build_cache(app, path.clone()).await?;
         SCANNER.get_result_with_depth(&path, max_depth)
     }
 }

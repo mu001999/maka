@@ -41,6 +41,11 @@ interface FileNode {
   show: boolean
 }
 
+interface ScanProgress {
+  scanned_size: number
+  file_count: number
+}
+
 function App() {
   const [currentPath, setCurrentPath] = useState<string>('')
   const [currentData, setCurrentData] = useState<FileNode | null>(null)
@@ -58,6 +63,7 @@ function App() {
   const [draggedNodes, setDraggedNodes] = useState<Set<string>>(new Set())
   const [isDeleteZoneExpanded, setIsDeleteZoneExpanded] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -105,12 +111,22 @@ function App() {
   const buildCache = useCallback(async (path: string) => {
     setLoading(true)
     setError('')
+    setScanProgress(null)
     try {
-      await invoke<string>('build_cache', { path })
+      const { listen } = await import('@tauri-apps/api/event')
+      const unlisten = await listen<ScanProgress>('scan-progress', (event) => {
+        setScanProgress(event.payload)
+      })
+      try {
+        await invoke<string>('build_cache', { path })
+      } finally {
+        unlisten()
+      }
     } catch (err) {
       setError(`Failed to build cache: ${err}`)
     } finally {
       setLoading(false)
+      setScanProgress(null)
     }
   }, [])
 
@@ -619,7 +635,16 @@ function App() {
             {loading && (
               <div className="loading-overlay">
                 <div className="spinner mb-4"></div>
-                <div className="text-sm text-gray-400">Scanning...</div>
+                {scanProgress ? (
+                  <div className="scan-progress">
+                    <div className="progress-stats">
+                      <span className="text-lg font-bold text-white">{formatSize(scanProgress.scanned_size)}</span>
+                      <span className="text-xs text-gray-400">{scanProgress.file_count.toLocaleString()} files</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Scanning...</div>
+                )}
               </div>
             )}
 
